@@ -1,6 +1,6 @@
 ﻿@echo off
 chcp 65001 >nul
-title LAST FREQUENCY - отладка
+title NOT soundLARP 100%% - отладка
 cd /d "%~dp0"
 set "PY=%LOCALAPPDATA%\Python\pythoncore-3.14-64\python.exe"
 if not exist "%PY%" set "PY=py"

@@ -23,7 +23,8 @@ presence_class = next(node for node in tree.body if isinstance(node, ast.ClassDe
 cover_class.body = [node for node in cover_class.body if isinstance(node, ast.FunctionDef) and node.name in ("_prepare", "resolve_remote")]
 activity = next(node for node in presence_class.body if isinstance(node, ast.FunctionDef) and node.name == "_activity")
 scope = {"io": io, "hashlib": hashlib, "time": time, "urlparse": urlparse, "urllib": urllib,
-         "logger": logging.getLogger(__name__), "NO_COVER": "", "COVER_USER_AGENT": "LF-test"}
+         "logger": logging.getLogger(__name__), "NO_COVER": "", "COVER_USER_AGENT": "LF-test",
+         "APP_NAME": "NOT soundLARP 100%"}
 exec(compile(ast.Module(body=[cover_class, activity], type_ignores=[]), str(ROOT / "player.py"), "exec"), scope)
 
 
@@ -45,6 +46,8 @@ class DiscordArtworkTests(unittest.TestCase):
         self.assertEqual(activity["large_text"], "YouTube Music")
         presence._now["playing"] = False
         self.assertEqual(scope["_activity"](presence)["state"], "⏸ MARETU")
+        presence._now["source"] = ""
+        self.assertEqual(scope["_activity"](presence)["large_text"], "NOT soundLARP 100%")
 
     def test_wide_and_tall_artwork_is_centered_square(self):
         for size in ((900, 600), (600, 900)):

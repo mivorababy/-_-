@@ -1,6 +1,6 @@
 ﻿@echo off
 chcp 65001 >nul
-title LAST FREQUENCY - установка зависимостей
+title NOT soundLARP 100%% - установка зависимостей
 cd /d "%~dp0"
 set "PY=%LOCALAPPDATA%\Python\pythoncore-3.14-64\python.exe"
 if not exist "%PY%" set "PY=py"
@@ -16,7 +16,7 @@ echo Проверяю Discord Rich Presence и онлайн-поиск...
 "%PY%" -c "import pypresence, yt_dlp; print('Discord Rich Presence и поиск: OK')"
 if errorlevel 1 goto failed
 echo.
-echo Готово. Discord будет показывать активность только LAST FREQUENCY.
+echo Готово. Discord будет показывать активность только NOT soundLARP 100%%.
 echo Полностью закрой и снова открой плеер.
 pause
 exit /b 0

@@ -12,10 +12,12 @@ if ($env:LOCALAPPDATA) {
 }
 $iscc = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 if (-not $iscc) { throw "Inno Setup 6 not found. Install Inno Setup, then run this script again." }
-$payload = Join-Path $root "dist\LastFrequency.exe"
-if (-not (Test-Path -LiteralPath $payload)) { throw "Build the player first: dist\LastFrequency.exe is missing." }
+$payload = Join-Path $root "dist\NOT soundLARP 100%.exe"
+if (-not (Test-Path -LiteralPath $payload)) { throw "Build the player first: dist\NOT soundLARP 100%.exe is missing." }
 & $iscc $script
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed with exit code $LASTEXITCODE." }
-$setup = Join-Path $root "dist\LastFrequency-Setup.exe"
+$setup = Join-Path $root "dist\NOT soundLARP 100%-Setup.exe"
+# Existing installed versions recognize this setup filename when checking updates.
+Copy-Item -LiteralPath $setup -Destination (Join-Path $root 'dist\LastFrequency-Setup.exe') -Force
 $size = [math]::Round((Get-Item -LiteralPath $setup).Length / 1MB)
 Write-Host "Installer ready: $setup ($size MB)"

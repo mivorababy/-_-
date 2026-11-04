@@ -18,8 +18,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Python could not start." }
 
     # --- a running copy of the freshly built EXE would block overwriting it
-    $targetExe = Join-Path $root "dist\LastFrequency.exe"
-    Get-CimInstance Win32_Process -Filter "Name = 'LastFrequency.exe'" -ErrorAction SilentlyContinue |
+    $targetExe = Join-Path $root "dist\NOT soundLARP 100%.exe"
+    Get-CimInstance Win32_Process -Filter "Name = 'NOT soundLARP 100%.exe'" -ErrorAction SilentlyContinue |
         Where-Object { $_.ExecutablePath -eq $targetExe } |
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
@@ -33,18 +33,18 @@ try {
     Write-Host "Preparing FFmpeg and ffprobe..."
     & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root "prepare_ffmpeg.ps1")
     if ($LASTEXITCODE -ne 0) { throw "FFmpeg preparation failed." }
-    foreach ($file in @("ffmpeg\bin\ffmpeg.exe", "ffmpeg\bin\ffprobe.exe", "web\index.html", "icon.ico", "LastFrequency.spec")) {
+    foreach ($file in @("ffmpeg\bin\ffmpeg.exe", "ffmpeg\bin\ffprobe.exe", "web\index.html", "icon.ico", "LastFrequency.spec", "windows-version-info.txt")) {
         if (-not (Test-Path -LiteralPath (Join-Path $root $file))) { throw "Required file missing: $file" }
     }
 
     # --- the whole build is described by the .spec file (one onefile EXE, web UI and FFmpeg are inside it)
-    Write-Host "Building LastFrequency.exe..."
+    Write-Host "Building NOT soundLARP 100%.exe..."
     & $python -m PyInstaller --noconfirm --clean LastFrequency.spec
     if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed. Check the output above." }
     if (-not (Test-Path -LiteralPath $targetExe)) { throw "PyInstaller returned without producing the EXE." }
 
     $size = [math]::Round((Get-Item -LiteralPath $targetExe).Length / 1MB)
-    Write-Host "Build complete: dist\LastFrequency.exe ($size MB)"
+    Write-Host "Build complete: dist\NOT soundLARP 100%.exe ($size MB)"
     Write-Host "The EXE includes the web UI, FFmpeg and ffprobe. Run build_installer.bat to make the installer."
     exit 0
 } catch {

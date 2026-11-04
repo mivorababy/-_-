@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LAST FREQUENCY — локальный музыкальный плеер.
+"""NOT soundLARP 100% — локальный музыкальный плеер.
 
 Маленький веб-сервер на стандартной библиотеке (127.0.0.1) + веб-интерфейс из папки web/.
 Окно открывается в режиме приложения Edge/Chrome. Слушает треки из папок-источников
@@ -38,6 +38,9 @@ from mini_player import FloatingMiniPlayer
 logger = logging.getLogger("player")
 
 VERSION = "1.32-last-frequency"
+APP_NAME = "NOT soundLARP 100%"
+APP_EXE_NAME = APP_NAME + ".exe"
+APP_SETUP_NAME = APP_NAME + "-Setup.exe"
 MAX_LAYERS = 8  # сколько треков можно играть одновременно в режиме «мульти-треки»
 APP_ID = "last-frequency"
 DEFAULT_PORT = 8775
@@ -281,7 +284,7 @@ def _apply_native_window_icon(hwnd):
 def find_player_hwnd(include_hidden=False):
     """HWND окна плеера (Edge/Chrome в режиме приложения).
 
-    Заголовок окна меняется («Трек · LAST FREQUENCY»), поэтому ищем по вхождению, а не по началу
+    Заголовок окна меняется («Трек · NOT soundLARP 100%»), поэтому ищем по вхождению, а не по началу
     строки, и запоминаем найденное окно."""
     global _PLAYER_HWND
     if os.name != "nt":
@@ -302,7 +305,7 @@ def find_player_hwnd(include_hidden=False):
             return True
         buf = ctypes.create_unicode_buffer(length + 1)
         user32.GetWindowTextW(candidate, buf, length + 1)
-        if "LAST FREQUENCY" in buf.value:
+        if APP_NAME in buf.value or "LAST FREQUENCY" in buf.value:
             cls = ctypes.create_unicode_buffer(256)
             user32.GetClassNameW(candidate, cls, 256)
             if cls.value.startswith(("Chrome_WidgetWin", "HwndWrapper", "WindowsForms10.Window")):
@@ -492,6 +495,31 @@ def _version_numbers(value: str) -> tuple[int, ...]:
     return tuple(parts)
 
 
+def _update_asset_key(name: str) -> str:
+    """GitHub may replace spaces and '%' in uploaded asset names with punctuation."""
+    name = str(name or "")
+    return re.sub(r"[^a-z0-9]", "", name[:-4].casefold()) if name.casefold().endswith(".exe") else ""
+
+
+def _select_update_asset(assets: list, frozen: bool, executable_name: str = ""):
+    supported = {_update_asset_key(item.get("name")): item for item in reversed(assets)
+                 if isinstance(item, dict)}
+    new_player, new_setup = _update_asset_key(APP_EXE_NAME), _update_asset_key(APP_SETUP_NAME)
+    if frozen and executable_name.casefold() == APP_EXE_NAME.casefold():
+        order = (new_player, new_setup, "lastfrequencysetup", "lastfrequency")
+    elif frozen:
+        # Installation migrates the legacy executable name and its shortcuts.
+        order = (new_setup, "lastfrequencysetup")
+    else:
+        order = (new_setup, "lastfrequencysetup", new_player, "lastfrequency")
+    return next((supported[key] for key in order if key in supported), None)
+
+
+def _is_setup_update(path: Path) -> bool:
+    key = _update_asset_key(path.name)
+    return key.startswith((_update_asset_key(APP_SETUP_NAME), "lastfrequencysetup"))
+
+
 def github_update_status(force: bool = False) -> dict:
     """Return the newest public GitHub release, cached to avoid repeated requests."""
     now = time.monotonic()
@@ -518,11 +546,7 @@ def github_update_status(force: bool = False) -> dict:
                 "notes": str(release.get("body") or "")[:6000],
             })
             assets = [item for item in release.get("assets", []) if isinstance(item, dict)]
-            executables = [item for item in assets if str(item.get("name") or "").lower().endswith(".exe")]
-            preferred = next((item for item in executables if FROZEN and str(item.get("name") or "").lower() == "lastfrequency.exe"), None)
-            preferred = preferred or next((item for item in executables if "setup" in str(item.get("name") or "").lower()), None)
-            preferred = preferred or next((item for item in executables if str(item.get("name") or "").lower() == "lastfrequency.exe"), None)
-            preferred = preferred or (executables[0] if executables else None)
+            preferred = _select_update_asset(assets, FROZEN, Path(sys.executable).name)
             download_url = str((preferred or {}).get("browser_download_url") or "")
             if download_url.startswith("https://github.com/"):
                 payload["download_url"] = download_url
@@ -552,10 +576,10 @@ def _launch_update_asset_after_exit(path: Path, player_pid: int) -> None:
         powershell = Path(found)
     safe_path = str(path.resolve()).replace("'", "''")
     player_dir = str(PLAYER_DIR.resolve()).replace("'", "''")
-    target = Path(sys.executable).resolve() if FROZEN else PLAYER_DIR / "LastFrequency.exe"
+    target = Path(sys.executable).resolve() if FROZEN else PLAYER_DIR / APP_EXE_NAME
     target_path = str(target).replace("'", "''")
     update_log = str(PLAYER_DIR / "logs" / "update.log").replace("'", "''")
-    if path.name.lower().startswith("lastfrequency-setup-"):
+    if _is_setup_update(path):
         install_arg = ('"/DIR=' + str(PLAYER_DIR.resolve()) + '"').replace("'", "''")
         action = f"Start-Process -FilePath '{safe_path}' -ArgumentList '{install_arg}'"
     else:
@@ -588,7 +612,7 @@ def _launch_update_asset_after_exit(path: Path, player_pid: int) -> None:
 def _start_update_download() -> dict:
     job_id = secrets.token_urlsafe(12)
     job = {"id": job_id, "status": "preparing", "percent": 0, "downloaded": 0,
-           "total": 0, "filename": "Обновление LAST FREQUENCY", "error": "", "opened": False}
+           "total": 0, "filename": "Обновление " + APP_NAME, "error": "", "opened": False}
     with _UPDATE_DOWNLOAD_JOBS_LOCK:
         _UPDATE_DOWNLOAD_JOBS[job_id] = job
         for stale_id in list(_UPDATE_DOWNLOAD_JOBS)[:-12]:
@@ -606,10 +630,11 @@ def _start_update_download() -> dict:
                 raise RuntimeError("Ссылка на установщик недоступна.")
             parsed = urlparse(url)
             asset_name = Path(unquote(parsed.path)).name
-            if asset_name.lower() not in ("lastfrequency-setup.exe", "lastfrequency.exe"):
-                raise RuntimeError("В релизе не найден поддерживаемый установщик LAST FREQUENCY.")
+            asset_key = _update_asset_key(asset_name)
+            if asset_key not in (_update_asset_key(APP_EXE_NAME), _update_asset_key(APP_SETUP_NAME), "lastfrequencysetup", "lastfrequency"):
+                raise RuntimeError("В релизе не найден поддерживаемый EXE плеера " + APP_NAME + ".")
             version = re.sub(r"[^A-Za-z0-9._-]", "", str(update.get("latest") or ""))[:40]
-            filename = f"LastFrequency-Setup-{version}.exe" if "setup" in asset_name.lower() else f"LastFrequency-{version}.exe"
+            filename = f"{APP_NAME}-Setup-{version}.exe" if _is_setup_update(Path(asset_name)) else f"{APP_NAME}-{version}.exe"
             destination_dir = PLAYER_DIR / "updates"
             destination_dir.mkdir(parents=True, exist_ok=True)
             destination = destination_dir / filename
@@ -672,7 +697,7 @@ def _start_update_download() -> dict:
                 except OSError: pass
             with _UPDATE_DOWNLOAD_JOBS_LOCK:
                 job.update(status="failed", error=str(error)[:300])
-            logger.warning("Не удалось скачать обновление LAST FREQUENCY: %s", error)
+            logger.warning("Не удалось скачать обновление %s: %s", APP_NAME, error)
 
     threading.Thread(target=worker, name=f"update-download-{job_id[:6]}", daemon=True).start()
     return _update_download_snapshot(job_id)
@@ -1121,7 +1146,7 @@ def sanitize_settings(data: dict, base: dict) -> dict:
         "enabled": _bool(dc_in.get("enabled"), dc_base["enabled"]),
         "client_id": DISCORD_CLIENT_ID,
         "show_elapsed": _bool(dc_in.get("show_elapsed"), dc_base["show_elapsed"]),
-        "source_mode": "player",  # Discord displays LAST FREQUENCY playback only.
+        "source_mode": "player",  # Discord displays this player's playback only.
         "large_image": "",
         "show_cover": _bool(dc_in.get("show_cover"), dc_base.get("show_cover", True)),
         "show_artist_image": _bool(dc_in.get("show_artist_image"), dc_base.get("show_artist_image", True)),
@@ -4514,7 +4539,7 @@ class DiscordPresence:
         self._wake.set()
 
     def update(self, now_playing: dict | None):
-        # Only LAST FREQUENCY playback is sent to Discord. Other apps are deliberately ignored.
+        # Only this player's playback is sent to Discord. Other apps are deliberately ignored.
         with self._lock:
             if now_playing and not now_playing.get("playing") and not self._show_paused:
                 now_playing = None
@@ -4648,11 +4673,11 @@ class DiscordPresence:
         cover = self._covers.get(str(np.get("id") or "")) if self._show_cover else None
         if cover:
             activity["large_image"] = cover
-            large_text = (str(np.get("album") or "") or source or "LAST FREQUENCY")[:120]
-            activity["large_text"] = large_text if len(large_text) >= 2 else "LAST FREQUENCY"
+            large_text = (str(np.get("album") or "") or source or APP_NAME)[:120]
+            activity["large_text"] = large_text if len(large_text) >= 2 else APP_NAME
         elif self._large_image:
             activity["large_image"] = self._large_image
-            activity["large_text"] = "LAST FREQUENCY"
+            activity["large_text"] = APP_NAME
         artist_image = getattr(self, "_artist_covers", {}).get(str(np.get("id") or "")) if self._show_artist_image else None
         if artist_image:
             activity["small_image"] = artist_image
@@ -5561,9 +5586,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._fail(500, str(error)[:300])
         if path == "/api/settings/export":
             try:
-                destination = Path.home() / "Downloads" / "last-frequency-settings.json"
+                destination = Path.home() / "Downloads" / (APP_NAME + "-settings.json")
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                payload = {"app": "LAST FREQUENCY", "format": 1,
+                payload = {"app": APP_NAME, "format": 1,
                            "exported_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
                            "settings": STATE.settings.get()}
                 destination.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -5781,7 +5806,7 @@ class Handler(BaseHTTPRequestHandler):
                                 "exportedAt": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "tracks": manifest_tracks,
                                 "note": "Audio files are included in Tracks/. Re-importing this ZIP is not yet supported; import playlist.json after extracting it."}
                     archive.writestr("playlist.json", json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8"))
-                    archive.writestr("README.txt", (f"LAST FREQUENCY playlist: {name}\n\n"
+                    archive.writestr("README.txt", (f"{APP_NAME} playlist: {name}\n\n"
                         f"Audio tracks included: {len(manifest_tracks)}\n"
                         "playlist.json contains the playlist manifest.\n").encode("utf-8"))
             except (OSError, zipfile.BadZipFile) as error:
@@ -6679,7 +6704,7 @@ def run_native_window(url: str):
     import webview
 
     window = webview.create_window(
-        "LAST FREQUENCY", url, width=1240, height=800, min_size=(760, 520),
+        APP_NAME, url, width=1240, height=800, min_size=(760, 520),
         frameless=True, easy_drag=False, confirm_close=False,
     )
     _NATIVE_WINDOW = window
@@ -6786,7 +6811,7 @@ def start_tray():
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Полностью закрыть", lambda icon, item: quit_player()),
         )
-        icon = pystray.Icon("LastFrequency", image, "LAST FREQUENCY", menu)
+        icon = pystray.Icon("LastFrequency", image, APP_NAME, menu)
         with _TRAY_LOCK:
             _TRAY_ICON = icon
         icon.run()
@@ -6947,7 +6972,7 @@ def setup_logging():
 
 def run_check():
     """python player\\player.py --check — печатает, что где лежит и что установлено."""
-    print("=== LAST FREQUENCY: самопроверка ===")
+    print("=== " + APP_NAME + ": самопроверка ===")
     print("Python:", sys.version.split()[0], "|", sys.executable)
     print("player.py:", Path(__file__).resolve())
     print("Режим:", "собранный .exe" if FROZEN else "из исходников", "| данные:", PLAYER_DIR)
@@ -7082,7 +7107,7 @@ def main():
             else:
                 logger.info("Окно уже работает в фоне; второй экземпляр не создаю")
             return
-        logger.warning("Порт %s занят старой версией плеера или другим процессом; запускаю LAST FREQUENCY %s на свободном порту", port, VERSION)
+        logger.warning("Порт %s занят старой версией плеера или другим процессом; запускаю %s %s на свободном порту", port, APP_NAME, VERSION)
         server = QuietThreadingHTTPServer(("127.0.0.1", 0), Handler)
         port = server.server_address[1]
     server.daemon_threads = True
@@ -7107,7 +7132,7 @@ def main():
         STATE.library.scan_async(force=True)
     if _ACTIVE_PERFORMANCE_MODE in ("online", "offline"):
         STATE.library.start_watching()
-    logger.info("═══ LAST FREQUENCY %s запущен: http://127.0.0.1:%s ═══", VERSION, port)
+    logger.info("═══ %s %s запущен: http://127.0.0.1:%s ═══", APP_NAME, VERSION, port)
     url = f"http://127.0.0.1:{port}/"
     server_thread = threading.Thread(target=server.serve_forever, name="http-server", daemon=True)
     server_thread.start()

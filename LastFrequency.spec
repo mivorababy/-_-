@@ -36,7 +36,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='LastFrequency',
+    name='NOT soundLARP 100%',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -50,4 +50,5 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=['icon.ico'],
+    version='windows-version-info.txt',
 )

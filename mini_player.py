@@ -157,7 +157,7 @@ class FloatingMiniPlayer:
             # Tk creates a visible top-level by default on Windows. Withdraw it immediately
             # so startup never flashes the mini-player before the main window is ready.
             root.withdraw()
-            root.title("LAST FREQUENCY — мини-плеер")
+            root.title("NOT soundLARP 100% — мини-плеер")
             root.overrideredirect(True)
             root.attributes("-topmost", True)
             root.configure(bg=self._colors["surface"])
@@ -1206,7 +1206,7 @@ class FloatingMiniPlayer:
             tk = self._tk
             window = tk.Toplevel(self._root)
             window.withdraw()
-            window.title("LAST FREQUENCY — текст песни")
+            window.title("NOT soundLARP 100% — текст песни")
             window.overrideredirect(True)
             window.attributes("-topmost", True)
             window.configure(bg=self._colors["surface"])

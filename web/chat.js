@@ -26,7 +26,7 @@
 
   function createPanel() {
     if(panel)return;
-    panel=document.createElement("section");panel.id="lfChatPanel";panel.className="lf-chat hidden";panel.setAttribute("aria-label","Чаты LAST FREQUENCY");
+    panel=document.createElement("section");panel.id="lfChatPanel";panel.className="lf-chat hidden";panel.setAttribute("aria-label","Чаты NOT soundLARP 100%");
     panel.innerHTML=`<div class="lf-chat-card"><header class="lf-chat-head"><div><h2>Чаты</h2><p>Музыка и переписка с друзьями</p></div><button class="iconbtn" id="lfChatClose" aria-label="Закрыть чат">✕</button></header>
       <details class="lf-chat-settings" open><summary>Подключение и ник</summary><form id="lfChatConfig" autocomplete="off"><label class="lf-chat-toggle"><input type="checkbox" id="lfChatEnabled">Включить чат</label>
       <div class="lf-chat-fields"><label>Твой ник<input class="text" id="lfChatNickname" minlength="2" maxlength="32" placeholder="Ник для переписки"></label><label>Режим<select class="select" id="lfChatMode"><option value="join">Подключиться к другу</option><option value="host">Создать чат на этом компьютере</option></select></label>

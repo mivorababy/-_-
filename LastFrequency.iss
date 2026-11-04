@@ -1,13 +1,13 @@
-﻿#define AppName "LAST FREQUENCY"
+﻿#define AppName "NOT soundLARP 100%"
 #define AppVersion "1.32"
-#define AppExe "LastFrequency.exe"
+#define AppExe "NOT soundLARP 100%.exe"
 
 [Setup]
 AppId={{E6A3810D-5BB3-4C35-9AE7-417AEE1A1942}}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppPublisher=LAST FREQUENCY
-DefaultDirName={localappdata}\Programs\Last Frequency
+AppPublisher={#AppName}
+DefaultDirName={localappdata}\Programs\NOT soundLARP 100%
 DefaultGroupName={#AppName}
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
@@ -17,7 +17,9 @@ WizardStyle=modern
 SetupIconFile=icon.ico
 UninstallDisplayIcon={app}\{#AppExe}
 OutputDir=dist
-OutputBaseFilename=LastFrequency-Setup
+OutputBaseFilename=NOT soundLARP 100%-Setup
+VersionInfoDescription={#AppName} Setup
+VersionInfoProductName={#AppName}
 Compression=lzma2/ultra64
 SolidCompression=yes
 UsePreviousAppDir=yes
@@ -35,6 +37,10 @@ Name: "desktopicon"; Description: "Создать ярлык на рабочем
 [InstallDelete]
 ; Старые установщики клали рядом с .exe копию папки web. Интерфейс теперь внутри .exe, лишняя папка удаляется.
 Type: filesandordirs; Name: "{app}\web"
+; Rename the previous executable and shortcuts while preserving the installed profile.
+Type: files; Name: "{app}\LastFrequency.exe"
+Type: files; Name: "{autoprograms}\LAST FREQUENCY.lnk"
+Type: files; Name: "{autodesktop}\LAST FREQUENCY.lnk"
 
 [Files]
 Source: "dist\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
@@ -48,7 +54,7 @@ Filename: "{app}\{#AppExe}"; Description: "Запустить {#AppName}"; Flags
 
 [UninstallRun]
 ; Stop the player before removing its installed profile and any files it created beside the EXE.
-Filename: "{sys}\taskkill.exe"; Parameters: "/F /T /IM {#AppExe}"; Flags: runhidden waituntilterminated
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /T /IM ""{#AppExe}"""; Flags: runhidden waituntilterminated; RunOnceId: "StopNOTSoundLARP100"
 
 [UninstallDelete]
 ; Player data (music, playlists, logs, settings, backgrounds) is intentionally stored beside the EXE.
