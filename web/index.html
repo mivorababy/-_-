@@ -6,6 +6,8 @@
 <title>LAST FREQUENCY</title>
 <meta name="theme-color" content="#0f1020">
 <meta name="color-scheme" content="dark light">
+<link rel="stylesheet" href="/chat.css">
+<script src="/chat.js" defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Lato:wght@400;700;900&family=Montserrat:wght@400;500;600;700;800&family=Nunito:wght@400;500;600;700;800&family=Open+Sans:wght@400;600;700;800&family=Pacifico&family=Quicksand:wght@400;500;600;700&family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
@@ -56,7 +58,7 @@ body.bold-font button,body.bold-font input,body.bold-font select{font-weight:700
 #bgImg{position:absolute;inset:-70px;background-size:cover;background-position:center;transition:background-image .5s,filter .3s}
 #bgClip{position:absolute;inset:-70px;width:calc(100% + 140px);height:calc(100% + 140px);object-fit:cover;opacity:0;pointer-events:none;transition:opacity .45s}
 #bgClip.active{opacity:1}
-#btnRefreshRadio[hidden],#radioProvider[hidden]{display:none!important}
+#btnRefreshRadio[hidden],#radioProvider[hidden],#radioRemixFilter[hidden],#radioAiFilter[hidden],#radioInstrumentalFilter[hidden]{display:none!important}
 #bgDim{position:absolute;inset:0;background:rgba(var(--dim-rgb),var(--dim));transition:background .3s}
 #vizBackground{position:absolute;z-index:2;inset:0;width:100%;height:100%;pointer-events:none;opacity:.46;mix-blend-mode:normal}
 body.light #vizBackground{mix-blend-mode:normal;opacity:.38}
@@ -115,6 +117,8 @@ body.pulse-on .row.active,body.pulse-on .row.layer-on{box-shadow:0 0 calc(10px +
 .listhead h1{margin:0;font-size:24px;line-height:1.2}
 .listhead .meta{color:var(--muted);font-size:13px;margin-top:2px}
 .listhead .actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:70%}
+.radio-filter{display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 10px;border-radius:99px;background:rgba(var(--line-rgb),.07);color:var(--muted);font-size:12px;white-space:nowrap;cursor:pointer}.radio-filter input{margin:0;accent-color:var(--accent)}
+.radio-settings-list{max-height:390px;overflow:auto;margin:10px 0 18px}.radio-source-row{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid rgba(var(--line-rgb),.07);content-visibility:auto;contain-intrinsic-size:auto 56px}.radio-source-row .source-rank{width:25px;flex:none;text-align:center;color:var(--muted);font-size:12px}.radio-source-row .source-info{flex:1;min-width:0}.radio-source-row strong,.radio-source-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.radio-source-row small{color:var(--muted);font-size:12px;margin-top:3px}.radio-source-row .source-active{color:var(--accent);font-size:11px;flex:none}.radio-source-row .thumb{width:34px;height:34px}.radio-exclude-button{position:relative}.radio-exclude-button::after{content:"";position:absolute;width:24px;height:2px;transform:rotate(-45deg);background:currentColor;border:1px solid var(--panel);border-radius:2px}.radio-exclude-button:hover{color:#ff6477}
 .listwrap{flex:1;min-height:0;overflow:auto;padding:0 8px 10px}
 .row{display:flex;align-items:center;gap:10px;width:100%;min-width:0;height:calc(var(--row-h) * var(--row-scale));padding:0 calc(10px * var(--row-scale));margin-bottom:calc(2px * var(--row-scale));border-radius:calc(var(--r) - 6px);cursor:default;content-visibility:auto;contain-intrinsic-size:auto calc(var(--row-h) * var(--row-scale))}.row>*{min-width:0;flex-shrink:0}.row>.select-box{flex:0 0 22px}.row>.idx{flex:0 0 24px}.row>.main2{flex:1 1 0;min-width:90px}.row>.pl{flex:0 1 22%;min-width:48px}.row>.du{flex:0 0 54px}.row>.addpl,.row>.fav{flex:0 0 32px}
 .row:hover{background:rgba(var(--line-rgb),.07)}
@@ -137,7 +141,11 @@ body.pulse-on .row.active,body.pulse-on .row.layer-on{box-shadow:0 0 calc(10px +
 .compact .thumb{width:calc(26px * var(--track-scale));height:calc(26px * var(--track-scale))}
 .thumb{width:38px;height:38px;border-radius:calc(var(--r) / 2.4);flex:none;overflow:hidden;display:grid;place-items:center;color:rgba(255,255,255,.85);background:linear-gradient(135deg,hsl(var(--h,230) 55% 48%),hsl(calc(var(--h,230) + 40) 55% 32%))}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb img.youtube-art{transform:scale(1.34)}
+body.clip-active .panel{backdrop-filter:none;-webkit-backdrop-filter:none}
+body.clip-active #bgImg{visibility:hidden}
 .thumb .icon{width:55%;height:55%}
+.row>[data-hide-track],.row>[data-delete-track]{flex:0 0 30px;width:30px;height:30px}.row>[data-delete-track]:hover{color:#ff6477;background:rgba(239,68,68,.2)}
 .eq{display:none;gap:2px;align-items:flex-end;height:14px;justify-content:center}
 .eq i{width:3px;height:14px;background:var(--accent);border-radius:2px;transform-origin:50% 100%;transform:scaleY(.22);animation:eq .9s steps(5,end) infinite;will-change:transform}
 .eq i:nth-child(2){animation-delay:.2s}.eq i:nth-child(3){animation-delay:.45s}
@@ -425,7 +433,7 @@ body.mono-theme #bgDim{background:rgba(0,0,0,.42)}body.mono-theme #bgImg{filter:
     <div class="nav-title" style="display:flex;align-items:center;justify-content:space-between">Плейлисты <button class="iconbtn" id="createPlaylist" title="Создать плейлист" style="width:26px;height:26px"><span data-icon="plus"></span></button></div>
     <input id="playlistImportFile" type="file" accept=".json,application/json" class="hidden">
     <div class="playlists" id="navPlaylists"></div>
-    <div class="side-foot"><button class="nav-item" id="openSettings"><span data-icon="gear"></span><span class="label">Настройки</span></button></div>
+    <div class="side-foot"><button class="nav-item" id="btnOpenChat"><span data-icon="radio"></span><span class="label">Чаты</span></button><button class="nav-item" id="openSettings"><span data-icon="gear"></span><span class="label">Настройки</span></button></div>
   </aside>
 
   <main class="main panel home-view">
@@ -457,6 +465,9 @@ body.mono-theme #bgDim{background:rgba(0,0,0,.42)}body.mono-theme #bgImg{filter:
         <button class="btn selection-action" id="btnDownloadClips" title="Скачать клипы для выбранных треков"><span data-icon="video"></span>Скачать клипы</button>
         <button class="btn danger selection-action" id="btnDeleteSelected" title="Удалить выбранные треки из текущего плейлиста"><span data-icon="trash"></span>Удалить</button>
         <button class="btn" id="btnShuffleAll"><span data-icon="shuffle"></span>Перемешать</button>
+        <label class="radio-filter" id="radioRemixFilter" title="Убирать результаты с явными пометками Remix, Bootleg, Nightcore и похожими" hidden><input type="checkbox" id="radioExcludeRemixes">Без ремиксов</label>
+        <label class="radio-filter" id="radioAiFilter" title="Убирать результаты с явными пометками Suno, Udio, AI cover и похожими" hidden><input type="checkbox" id="radioExcludeAiSlop">Без AI-slop</label>
+        <label class="radio-filter" id="radioInstrumentalFilter" title="Не предлагать инструментальные версии, караоке и минусовки с явными пометками" hidden><input type="checkbox" id="radioExcludeInstrumentals">Без инструменталов</label>
         <select class="select" id="radioProvider" title="Где искать похожие треки" aria-label="Источник рекомендаций радио" hidden><option value="all">Любой источник</option><option value="youtube_music">YouTube Music</option><option value="youtube">YouTube</option><option value="soundcloud">SoundCloud</option></select>
         <button class="btn" id="btnRefreshRadio" title="Подобрать новые похожие треки" hidden><span data-icon="refresh"></span>Обновить радио</button>
         <button class="btn primary" id="btnPlayAll"><span data-icon="play"></span>Играть</button>
@@ -522,6 +533,7 @@ body.mono-theme #bgDim{background:rgba(0,0,0,.42)}body.mono-theme #bgImg{filter:
       <button class="tab" data-tab="visuals"><span data-icon="note"></span>Визуальные эффекты</button>
       <button class="tab" data-tab="bg"><span data-icon="image"></span>Фон</button>
       <button class="tab" data-tab="tracks"><span data-icon="folder"></span>Треки</button>
+      <button class="tab" data-tab="radio"><span data-icon="radio"></span>Радио</button>
       <button class="tab" data-tab="download"><span data-icon="download"></span>Загрузки MP3</button>
       <button class="tab" data-tab="multi"><span data-icon="layers"></span>Мульти-треки</button>
       <button class="tab" data-tab="discord"><span data-icon="note"></span>Discord</button>
@@ -531,6 +543,19 @@ body.mono-theme #bgDim{background:rgba(0,0,0,.42)}body.mono-theme #bgImg{filter:
     </div>
     <div class="pane">
       <button class="iconbtn closex" id="settingsClose" data-icon="close" title="Закрыть (Esc)"></button>
+
+      <section data-pane="radio" class="hidden">
+        <h4>Подбор радио</h4>
+        <div class="note">Радио ищет похожие песни по текущему треку и истории прослушиваний. Исключённые треки не участвуют в подборе и не появляются в рекомендациях.</div>
+        <div class="field"><div class="lab">Треков в подборке<small>Сколько новых рекомендаций запрашивать за одно обновление: от 1 до 100.</small></div><div class="ctl"><input class="setting-number" type="number" id="radioRecommendationCount" min="1" max="100" step="1" aria-label="Количество рекомендаций радио"></div></div>
+        <div class="field"><div class="lab">Источников для подбора<small>Первые треки из списка ниже: от 1 до 20. Остальные остаются в резерве.</small></div><div class="ctl"><input class="setting-number" type="number" id="radioSeedCount" min="1" max="20" step="1" aria-label="Количество источников радио"></div></div>
+        <div class="field"><div class="lab">Актуальность прослушиваний<small>За сколько последних дней брать историю: от половины дня до года.</small></div><div class="ctl"><input class="setting-number" type="number" id="radioHistoryDays" min="0.5" max="365" step="0.5" aria-label="Период истории радио в днях"><span>дней</span></div></div>
+        <div class="field"><div class="lab">Источники радио<small id="radioSourcesSummary"></small></div><div class="ctl"><button class="btn small" id="radioSourcesToggle" aria-expanded="false" aria-controls="radioSourcesList">Список треков для радио</button></div></div>
+        <div class="radio-settings-list hidden" id="radioSourcesList"></div>
+        <h4>Фильтр радио</h4>
+        <div class="note">Нажми зачёркнутое радио у песни, чтобы исключить её. Если она использовалась для подбора, её место займёт следующая подходящая песня из списка.</div>
+        <div class="radio-settings-list" id="radioBlockedTracks"></div>
+      </section>
 
       <section data-pane="mode" class="hidden">
         <h4>Режим плеера</h4>
@@ -674,6 +699,7 @@ body.mono-theme #bgDim{background:rgba(0,0,0,.42)}body.mono-theme #bgImg{filter:
         <h4>Настройка и профиль</h4>
         <div class="field"><div class="lab">Мастер настройки<small>Оформление, фон, источники музыки и режим работы с предпросмотром.</small></div><div class="ctl"><button class="btn small primary" id="openSetupWizard">Открыть мастер</button></div></div>
         <div class="field"><div class="lab">Настройки в файл<small>Сохраняет оформление и параметры плеера. Музыка и личные файлы не включаются.</small></div><div class="ctl"><button class="btn small" id="exportSettings">Скачать настройки</button><button class="btn small" id="importSettings">Загрузить настройки</button><input type="file" id="settingsImportFile" accept="application/json,.json" class="hidden"></div></div>
+        <div class="field"><div class="lab">Скрытые треки<small id="hiddenTracksCount">Скрытых треков нет.</small></div><div class="ctl"><button class="btn small" id="restoreHiddenTracks" disabled>Вернуть скрытые треки</button></div></div>
         <h4>Звук</h4>
         <div class="field"><div class="lab">Усилитель громкости<small>Усиливает звук треков до 25×, отдельно от основного ползунка громкости. Включён ограничитель пиков, но на высоких значениях звук может быть очень громким и искажаться — повышай постепенно.</small></div><div class="ctl"><input type="range" id="volBoost" min="100" max="2500" step="10"><span class="val" id="volBoostV"></span></div></div>
         <h4 id="dvdSettingsTitle">DVD заставка</h4>
@@ -932,6 +958,22 @@ function toast(message) {
 }
 
 const CHANGE_LOG_ENTRIES = [
+  {version:"1.31", date:"2026-11-03", items:[
+    "В радио добавлен фильтр инструменталов, караоке и минусовок.",
+    "Крестик убирает трек из списка; корзина удаляет локальный аудиофайл после подтверждения. Скрытые треки можно вернуть в настройках.",
+    "Добавлены отключаемые чаты с ником, комнатами, рекомендациями треков и обменом плейлистами. Один из плееров создаёт чат, остальные подключаются по адресу и коду.",
+    "Обновление сохраняется рядом с плеером и заменяет EXE с резервной копией. Убрана повторная упаковка FFmpeg.",
+    "Панель мультимедиа Windows показывает название трека, исполнителя и обложку вместо скрытых данных InPrivate."
+  ]},
+  {version:"1.30", date:"2026-11-02", items:[
+    "Для видеотреков используется исходное YouTube-видео; для Topic и Official Audio отдельно подбирается клип с приоритетом канала исполнителя.",
+    "Радио уточняет авторов до показа списка; миниатюры YouTube обрезаются без встроенных чёрных полос.",
+    "Качество фонового видео следует настройке, по умолчанию до 1080p/30 кадров; размытие видео и панелей отключено, в скрытом окне видео ставится на паузу.",
+    "Скачать+ докачивает клип и для уже имеющегося MP3; ошибки клипа показываются в загрузках.",
+    "Радио убирает повторяющиеся песни по названию и исполнителю, включая недавно прослушанные.",
+    "Добавлены переключатели фильтров ремиксов и явно помеченной AI-музыки.",
+    "После загрузки обновления плеер полностью закрывается, затем открывается установщик."
+  ]},
   {version:"1.28", date:"2026-10-31", items:[
     "Добавлены варианты «Позже» и «Скачать» для уведомления об обновлении.",
     "Плеер скачивает установщик в Downloads, показывает прогресс и открывает файл после загрузки.",
@@ -1327,7 +1369,7 @@ const S = {
   selectMode: false, selected: new Set(),
   baseQueue: [], queue: [], qpos: -1, queueSource: "", current: null, durCache: {}, errorStreak: 0,
   onlineTracks: new Map(), onlinePlaylists: new Map(), currentGlobalResults: [], playHistory: loadPlaybackHistory(), remoteFavorites: loadRemoteFavorites(), remoteFavoriteTracks: new Map(loadRemoteFavoriteItems().map(item=>[item.id,item])), remoteQueueActive: false, remoteLoadToken: 0,
-  radioEnabled: false, radioLoading: false, radioSeen: new Set(), radioSeenOrder: [], radioQueue: [], samplePlaylistAvailable: false,
+  radioEnabled: false, radioLoading: false, radioSeen: new Set(), radioSeenOrder: [], radioSongSeen: [], radioQueue: [], samplePlaylistAvailable: false,
   layers: [], ctx: null, analyser: null, boost: null, srcMain: null, limiter: null, seeking: false, restored: false, hasPlayed: false, plName: new Map(),
 };
 function showRestartOverlay() {
@@ -1344,7 +1386,8 @@ function runtimePerformanceMode() { return S.activePerformanceMode || S.settings
 const audio = $("#audio");
 let activeHlsPlayer = null;
 let backgroundClipRequest = 0;
-let radioRecommendationRequest=0,radioRefreshTimer=0,radioPreloadSequence=0;
+let radioRecommendationRequest=0,radioPreloadSequence=0,radioReloadQueued=false,radioQueuedPlayNow=false;
+let radioSourceEntries=[],radioRecommendationEntries=[];
 let playCountedForSession=false;
 let hlsLibraryPromise = null;
 function loadHlsLibrary() {
@@ -1625,11 +1668,12 @@ async function loadBackgroundClip(track) {
   const clip=$("#bgClip"),id=String(track?.id||"");
   if(!clip||!id)return;
   const request=++backgroundClipRequest;
+  document.body.classList.remove("clip-active");
   clip.pause();clip.classList.remove("active");clip.removeAttribute("src");clip.load();
   clip.dataset.trackId=id;clip.dataset.failed="";
   if(!S.activeClipsEnabled)return;
   try {
-    const result=await api("/api/clips/resolve","POST",{id,title:track.title||"",artist:track.artist||""});
+    const result=await api("/api/clips/resolve","POST",{id,title:track.title||"",artist:track.artist||"",url:track.url||""});
     if(request!==backgroundClipRequest||S.settings?.background?.type!=="cover"||String(S.current?.id||"")!==id)return;
     if(!result?.found||!result.url){clip.dataset.failed=id;return;}
     clip.dataset.local=result.local?"1":"0";
@@ -1649,8 +1693,8 @@ function syncBackgroundClip(forceSeek=false) {
     }
     try { clip.playbackRate=audio.playbackRate||1; } catch (_) {}
   }
-  if(audio.paused||audio.ended)clip.pause();
-  else if(clip.readyState>=2)clip.play().catch(()=>{});
+  if(audio.paused||audio.ended||document.hidden)clip.pause();
+  else if(clip.readyState>=2&&clip.paused)clip.play().catch(()=>{});
 }
 function applyBackground() {
   const b = S.settings.background, node = $("#bgImg"), style = node.style;
@@ -1682,7 +1726,8 @@ function applyBackground() {
     clip.style.height=fitCover?"100%":"calc(100% + 140px)";
     clip.style.objectFit=fitCover?"contain":"cover";
     clip.style.backgroundColor=fitCover?"#000":"transparent";
-    clip.style.filter=style.filter;
+    // A full-window blur allocates extra render surfaces for every video frame.
+    clip.style.filter="none";
     clip.style.transform=style.transform;
     clip.style.transformOrigin=style.transformOrigin;
     clip.style.objectPosition=fitCover?"50% 50%":`${Number(b.crop_x??50)}% ${Number(b.crop_y??50)}%`;
@@ -1692,15 +1737,15 @@ function applyBackground() {
         loadBackgroundClip(S.current);
       } else if(!clip.dataset.failed&&clip.currentSrc) syncBackgroundClip();
     } else {
-      backgroundClipRequest++;clip.classList.remove("active");clip.pause();clip.removeAttribute("src");clip.load();clip.dataset.trackId="";clip.dataset.failed="";
+      backgroundClipRequest++;clip.classList.remove("active");document.body.classList.remove("clip-active");clip.pause();clip.removeAttribute("src");clip.load();clip.dataset.trackId="";clip.dataset.failed="";
     }
   }
   document.documentElement.style.setProperty("--dim", String(b.dim / 100));
   updateDvdIcon();
 }
-$("#bgClip").addEventListener("canplay",event=>{const clip=event.currentTarget;if(S.settings?.background?.type==="cover"&&clip.dataset.trackId===String(S.current?.id||"")){clip.classList.add("active");syncBackgroundClip(true);}});
-$("#bgClip").addEventListener("playing",event=>{const clip=event.currentTarget;if(S.settings?.background?.type==="cover"&&clip.dataset.trackId===String(S.current?.id||""))clip.classList.add("active");});
-$("#bgClip").addEventListener("error",event=>{const clip=event.currentTarget;clip.classList.remove("active");clip.dataset.failed=clip.dataset.trackId||"1";});
+$("#bgClip").addEventListener("canplay",event=>{const clip=event.currentTarget;if(S.settings?.background?.type==="cover"&&clip.dataset.trackId===String(S.current?.id||"")){clip.classList.add("active");document.body.classList.add("clip-active");syncBackgroundClip();}});
+$("#bgClip").addEventListener("playing",event=>{const clip=event.currentTarget;if(S.settings?.background?.type==="cover"&&clip.dataset.trackId===String(S.current?.id||"")){clip.classList.add("active");document.body.classList.add("clip-active");}});
+$("#bgClip").addEventListener("error",event=>{const clip=event.currentTarget;clip.classList.remove("active");document.body.classList.remove("clip-active");clip.dataset.failed=clip.dataset.trackId||"1";clip.pause();clip.removeAttribute("src");clip.load();});
 function updateBackgroundCropPreview() {
   const settings=S.settings?.background||{}, box=$("#bgCropPreview"), image=$("#bgCropImage");
   if(!box||!image)return;
@@ -1773,19 +1818,25 @@ function savePlaylistTrackOrder(key, ids) {
 function queuedTrack(id) { return S.byId.get(id)||S.onlineTracks.get(id)||storedRemoteTrack(id); }
 function queueUpcomingIds() { return S.queue.slice(); }
 function queueUpcomingTracks() { return queueUpcomingIds().map(queuedTrack).filter(Boolean); }
+function filterHiddenTracks(tracks, playlistKey="", includeGlobal=true) {
+  const hidden=new Set([...(includeGlobal?(S.settings.hidden_tracks||[]):[]),...(playlistKey?(S.settings.hidden_playlist_tracks?.[playlistKey]||[]):[])]);
+  return hidden.size?tracks.filter(track=>!hidden.has(track.id)):tracks;
+}
 function visibleTracks() {
   const fav = new Set(S.settings.favorites);
   let list;
   if (S.view.type === "radio") list = S.radioQueue.slice();
   else if (S.view.type === "queue") list = queueUpcomingTracks();
   else if (S.view.type === "fav") list = [...S.tracks.filter((t) => fav.has(t.id)), ...Array.from(S.remoteFavoriteTracks.values(), track => ({...track,remote:true}))];
-  else if (S.view.type === "recent") list = S.tracks.slice().sort((a, b) => b.mt - a.mt).slice(0, 100);
+  else if (S.view.type === "recent") list = filterHiddenTracks(S.tracks).slice().sort((a, b) => b.mt - a.mt).slice(0, 100);
   else if (S.view.type === "pl") list = S.tracks.filter((t) => t.pl === S.view.key);
   else if (S.view.type === "custompl") {
     const p = S.customPlaylists.find(x => x.id === S.view.key);
     list = p ? p.ids.map(id => S.byId.get(id) || (p.remoteTracks && p.remoteTracks[id] ? { ...p.remoteTracks[id], id, remote: true } : storedRemoteTrack(id))).filter(Boolean) : [];
   }
   else list = S.tracks.slice();
+  if(S.view.type==="pl")list=filterHiddenTracks(list,S.view.key,false);
+  else if(S.view.type==="all"||S.view.type==="recent")list=filterHiddenTracks(list);
   const query = S.search.trim().toLowerCase();
   if (query) list = list.filter((t) => `${t.title} ${t.artist} ${t.album} ${playlistName(t)}`.toLowerCase().includes(query));
   const sorters = {
@@ -1814,12 +1865,19 @@ function thumbHtml(track) {
   const hue = hueFor(track ? (track.artist || track.title) : "");
   return `<div class="thumb" style="--h:${hue}">${icon("note")}</div>`;
 }
+document.addEventListener("load",event=>{
+  const image=event.target;
+  if(image.tagName!=="IMG"||!image.closest(".thumb"))return;
+  const ratio=image.naturalWidth/Math.max(1,image.naturalHeight);
+  image.classList.toggle("youtube-art",/^https:\/\/(?:i|img)\.ytimg\.com\/vi\//i.test(image.currentSrc||image.src)&&ratio>1.3&&ratio<1.4);
+},true);
 const PLAYLIST_ORDER_KEY = "lastfrequency.playlistOrder.v1";
 const LEGACY_PLAYLIST_ORDER_KEY = "soundlarp.playlistOrder.v1";
 let sidebarPlaylistOrder = (() => { try { let raw=localStorage.getItem(PLAYLIST_ORDER_KEY); if(raw===null){raw=localStorage.getItem(LEGACY_PLAYLIST_ORDER_KEY);if(raw!==null){localStorage.setItem(PLAYLIST_ORDER_KEY,raw);localStorage.removeItem(LEGACY_PLAYLIST_ORDER_KEY);}} const value=JSON.parse(raw||"[]"); return Array.isArray(value)?value.filter(x=>typeof x==="string"):[]; } catch { return []; } })();
 function saveSidebarPlaylistOrder(ids){sidebarPlaylistOrder=ids;try{localStorage.setItem(PLAYLIST_ORDER_KEY,JSON.stringify(ids));}catch{}}
 function renderSidebar() {
-  const fav = S.settings.favorites.filter((id) => S.byId.has(id)).length + S.remoteFavoriteTracks.size;
+  const libraryTracks=filterHiddenTracks(S.tracks);
+  const fav = S.tracks.filter(track=>S.settings.favorites.includes(track.id)).length+S.remoteFavoriteTracks.size;
   const playlistArt = (tracks, fallback) => {
     if (S.settings.playlist_icon_mode !== "cover") return icon(fallback);
     const remote = tracks.find(t => t && t.remote && t.thumbnail);
@@ -1831,16 +1889,16 @@ function renderSidebar() {
     { type: "home", key: "", name: "Главная", icon: "search", count: null },
     { type: "queue", key: "", name: "Очередь", icon: "list", count: queueUpcomingIds().length },
     { type: "radio", key: "", name: "Радио", icon: "radio", count: S.radioQueue?.length || 0 },
-    { type: "all", key: "", name: "Все треки", icon: "library", count: S.tracks.length },
-    { type: "recent", key: "", name: "Новые", icon: "clock", count: Math.min(100, S.tracks.length) },
+    { type: "all", key: "", name: "Все треки", icon: "library", count: libraryTracks.length },
+    { type: "recent", key: "", name: "Новые", icon: "clock", count: Math.min(100, libraryTracks.length) },
     { type: "fav", key: "", name: "Избранное", icon: "heart", count: fav },
   ];
   const active = (t, k) => S.view.type === t && S.view.key === k ? " active" : "";
   $("#navMain").innerHTML = items.map((i) =>
     `<button class="nav-item${active(i.type, i.key)}" data-type="${i.type}" data-key="${esc(i.key)}">${icon(i.icon)}<span class="label">${esc(i.name)}</span>${i.count == null ? "" : `<span class="count">${i.count}</span>`}</button>`).join("");
   const playlistItems = [
-    ...S.playlists.map(p => ({id:"pl:"+p.key,type:"pl",key:p.key,name:p.name,provider:p.provider,count:p.count,coverTracks:S.tracks.filter(t=>t.pl===p.key)})),
-    ...S.customPlaylists.map(p => ({id:"custom:"+p.id,type:"custompl",key:p.id,name:p.name,custom:p,count:p.ids.filter(id=>S.byId.has(id)||(p.remoteTracks&&p.remoteTracks[id])).length,coverTracks:p.ids.map(id=>S.byId.get(id)||(p.remoteTracks&&p.remoteTracks[id]?{...p.remoteTracks[id],id,remote:true}:null)).filter(Boolean)})),
+    ...S.playlists.map(p => {const tracks=filterHiddenTracks(S.tracks.filter(t=>t.pl===p.key),p.key,false);return {id:"pl:"+p.key,type:"pl",key:p.key,name:p.name,provider:p.provider,count:tracks.length,coverTracks:tracks};}),
+    ...S.customPlaylists.map(p => {const tracks=p.ids.map(id=>S.byId.get(id)||(p.remoteTracks&&p.remoteTracks[id]?{...p.remoteTracks[id],id,remote:true}:null)).filter(Boolean);return {id:"custom:"+p.id,type:"custompl",key:p.id,name:p.name,custom:p,count:tracks.length,coverTracks:tracks};}),
   ];
   const savedIndex=new Map(sidebarPlaylistOrder.map((id,index)=>[id,index]));
   playlistItems.sort((a,b)=>{if(a.name==="Добро и позитив"&&b.name!=="Добро и позитив")return -1;if(b.name==="Добро и позитив"&&a.name!=="Добро и позитив")return 1;const ai=savedIndex.has(a.id)?savedIndex.get(a.id):Infinity,bi=savedIndex.has(b.id)?savedIndex.get(b.id):Infinity;return ai-bi||a.name.localeCompare(b.name);});
@@ -1867,6 +1925,9 @@ function renderList() {
   const isHome = S.view.type === "home";
   const refreshRadioButton=$("#btnRefreshRadio");if(refreshRadioButton)refreshRadioButton.hidden=S.view.type!=="radio";
   const radioProviderSelect=$("#radioProvider");if(radioProviderSelect){radioProviderSelect.hidden=S.view.type!=="radio";radioProviderSelect.value=S.settings.radio_provider||"all";}
+  for(const [wrapId,inputId,key] of [["radioRemixFilter","radioExcludeRemixes","radio_exclude_remixes"],["radioAiFilter","radioExcludeAiSlop","radio_exclude_ai_slop"],["radioInstrumentalFilter","radioExcludeInstrumentals","radio_exclude_instrumentals"]]){
+    const wrap=$("#"+wrapId),input=$("#"+inputId);if(wrap)wrap.hidden=S.view.type!=="radio";if(input)input.checked=S.settings[key]!==false;
+  }
   main.classList.toggle("home-view", isHome);
   $("#homePage").classList.toggle("hidden", !isHome);
   if (isHome) { $("#sort").disabled=false;renderProviderLinks($("#globalSearch")?.value || ""); renderRecentlyPlayed(); return; }
@@ -1904,6 +1965,8 @@ function renderList() {
         `<button class="iconbtn addpl" data-addpl="${esc(t.id)}" title="Добавить в плейлист">${icon("plus")}</button>` +
         `${t.remote ? "" : `<button type="button" class="iconbtn edit-track" data-edit-track="${esc(t.id)}" aria-label="Обрезать трек" title="Обрезать трек">✂</button>`}` +
         `${!t.remote&&isEditedLocalTrack(t) ? `<button type="button" class="iconbtn" data-distribute-edited="${esc(t.id)}" aria-label="Разместить в локальном плейлисте" title="Переместить, скопировать или заменить трек в локальном плейлисте">⇄</button>` : ""}` +
+        `${S.view.type!=="radio"?`<button class="iconbtn" data-hide-track="${esc(t.id)}" title="Убрать из списка, сохранив файл" aria-label="Убрать из списка">${icon("close")}</button>`:""}` +
+        `${!t.remote&&S.view.type!=="radio"?`<button class="iconbtn danger" data-delete-track="${esc(t.id)}" title="Удалить аудиофайл с компьютера" aria-label="Удалить аудиофайл">${icon("trash")}</button>`:""}` +
         `<button class="iconbtn fav${(t.remote?S.remoteFavorites.has(t.id):fav.has(t.id)) ? " on" : ""}" data-fav="${esc(t.id)}" title="${(t.remote?S.remoteFavorites.has(t.id):fav.has(t.id)) ? "Убрать из избранного" : "В избранное"}">${icon((t.remote?S.remoteFavorites.has(t.id):fav.has(t.id)) ? "heartfill" : "heart")}</button>`)+`</div>`;
   }).join("");
   box.querySelectorAll("[data-edit-track]").forEach(button=>button.addEventListener("click",event=>{
@@ -2171,54 +2234,172 @@ function topListenedTracks(days=0,limit=20) {
     return track?{...track,count:Math.max(1,Number(item.count)||1),lastPlayed:Number(item.at)||0}:null;
   }).filter(Boolean).sort((a,b)=>b.count-a.count||b.lastPlayed-a.lastPlayed||collator.compare(a.title,b.title)).slice(0,limit);
 }
-async function loadRadioNext({playNow=false,refresh=false}={}) {
-  if(!S.radioEnabled||S.radioLoading)return;
-  S.radioLoading=true;updateRadioUi();
-  const history=topListenedTracks(10.5,2000).filter(track=>isOnlineMode()||!track.remote);
+function radioNumber(key,fallback,min,max) {
+  const value=Number(S.settings?.[key]);return Number.isFinite(value)?Math.max(min,Math.min(max,value)):fallback;
+}
+function isRadioTrackBlocked(track) {
+  return (S.settings?.radio_blocked_tracks||[]).some(blocked=>blocked.id===track?.id||sameRadioSong(blocked,track));
+}
+function radioSeedPool() {
+  const days=radioNumber("radio_history_days",10.5,.5,365),cutoff=Date.now()-days*86400000;
+  const history=topListenedTracks(days,2000).filter(track=>(isOnlineMode()||!track.remote)&&!isRadioTrackBlocked(track));
   const seeds=[];
-  if(S.current) {
-    const played=history.find(track=>track.id===S.current.id&&!!track.remote===!!S.current.remote);
-    seeds.push({...S.current,count:Math.max(1,Number(played?.count)||1),lastPlayed:Date.now()});
+  if(S.current&&(isOnlineMode()||!S.current.remote)&&!isRadioTrackBlocked(S.current)){
+    const previous=S.playHistory.find(track=>track.id===S.current.id||sameRadioSong(track,S.current));
+    if((previous&&Number(previous.at||0)>=cutoff)||(!previous&&S.hasPlayed))seeds.push({...S.current,count:Math.max(1,Number(previous?.count)||1),lastPlayed:Number(previous?.at)||Date.now()});
   }
-  for(const track of history)if(!seeds.some(seed=>seed.id===track.id))seeds.push(track);
-  const chosen=seeds.slice(0,5);
+  for(const track of history)if(!seeds.some(seed=>seed.id===track.id||sameRadioSong(seed,track)))seeds.push(track);
+  return seeds;
+}
+function radioTrackRecord(track) {
+  return {id:String(track.id||""),title:String(track.title||"Без названия").slice(0,180),artist:String(track.artist||"").slice(0,180),remote:!!track.remote,url:String(track.url||""),thumbnail:String(track.thumbnail||"")};
+}
+function renderRadioSettings() {
+  if(!S.settings)return;
+  for(const [id,key,fallback,min,max] of [["radioRecommendationCount","radio_recommendation_count",30,1,100],["radioSeedCount","radio_seed_count",5,1,20],["radioHistoryDays","radio_history_days",10.5,.5,365]]){
+    const input=$("#"+id);if(input&&document.activeElement!==input)input.value=radioNumber(key,fallback,min,max);
+  }
+  radioSourceEntries=radioSeedPool();
+  const used=Math.min(radioSourceEntries.length,Math.round(radioNumber("radio_seed_count",5,1,20)));
+  $("#radioSourcesSummary").textContent=`Используется: ${used}. В резерве: ${Math.max(0,radioSourceEntries.length-used)}.`;
+  const list=$("#radioSourcesList");
+  radioRecommendationEntries=S.radioQueue.filter(track=>!isRadioTrackBlocked(track));
+  if(!list.classList.contains("hidden")){
+    const sources=radioSourceEntries.length?radioSourceEntries.map((track,index)=>`<div class="radio-source-row"><span class="source-rank">${index+1}</span>${thumbHtml(track)}<div class="source-info"><strong>${esc(track.title)}</strong><small>${esc(track.artist||"Исполнитель не указан")} · ${Math.max(1,Number(track.count)||1)} прослуш.</small></div><span class="source-active">${index<used?"В подборе":"Резерв"}</span><button class="iconbtn radio-exclude-button" data-radio-block="${index}" title="Исключить трек из радио" aria-label="Исключить трек из радио">${icon("radio")}</button></div>`).join(""):'<div class="note">За выбранный период нет подходящих прослушиваний. Послушай трек или увеличь период истории.</div>';
+    const recommendations=radioRecommendationEntries.length?radioRecommendationEntries.map((track,index)=>`<div class="radio-source-row"><span class="source-rank">${index+1}</span>${thumbHtml(track)}<div class="source-info"><strong>${esc(track.title)}</strong><small>${esc(track.artist||"Исполнитель не указан")}</small></div><button class="iconbtn radio-exclude-button" data-radio-block-recommendation="${index}" title="Исключить рекомендацию из радио" aria-label="Исключить рекомендацию из радио">${icon("radio")}</button></div>`).join(""):'<div class="note">Рекомендации появятся после открытия радио.</div>';
+    list.innerHTML=`<h4>Основа подбора</h4>${sources}<h4>Текущие рекомендации</h4>${recommendations}`;
+  }
+  const blocked=S.settings.radio_blocked_tracks||[];
+  $("#radioBlockedTracks").innerHTML=blocked.length?blocked.map((track,index)=>`<div class="radio-source-row">${thumbHtml(track)}<div class="source-info"><strong>${esc(track.title)}</strong><small>${esc(track.artist||"Исполнитель не указан")}</small></div><button class="btn small" data-radio-restore="${index}">Вернуть в радио</button></div>`).join(""):'<div class="note">Исключённых треков нет.</div>';
+}
+function resetRadioUpcoming() {
+  const keep=new Set(S.queueSource==="radio:"?S.queue.slice(0,Math.max(0,S.qpos+1)):[]);
+  const removed=S.radioQueue.filter(track=>!keep.has(track.id));
+  const removedIds=new Set(removed.map(track=>track.id));
+  for(const id of removedIds)S.radioSeen.delete(id);
+  S.radioSeenOrder=S.radioSeenOrder.filter(id=>!removedIds.has(id));
+  S.radioSongSeen=S.radioSongSeen.filter(track=>!removed.some(old=>sameRadioSong(old,track)));
+  if(S.queueSource!=="radio:"){S.radioQueue=[];return;}
+  S.radioQueue=S.radioQueue.filter(track=>keep.has(track.id)&&!isRadioTrackBlocked(track));
+  S.queue=S.queue.filter(id=>keep.has(id)&&!isRadioTrackBlocked(queuedTrack(id)));
+  S.qpos=S.current?S.queue.indexOf(S.current.id):-1;S.baseQueue=S.queue.slice();
+}
+function queueRadioReload({playNow=false}={}) {
+  radioRecommendationRequest++;
+  radioReloadQueued=true;radioQueuedPlayNow=radioQueuedPlayNow||playNow;
+  pruneRadioQueueByFilters();renderRadioSettings();
+  if(S.radioEnabled&&!S.radioLoading)loadRadioNext({refresh:true});
+}
+async function saveRadioOption(patch) {
+  const revision=++radioRecommendationRequest;
+  const previous=Object.fromEntries(Object.keys(patch).map(key=>[key,S.settings[key]]));
+  const saved=await setSetting(patch,{immediate:true});
+  if(!saved){if(revision===radioRecommendationRequest){Object.assign(S.settings,previous);queueRadioReload();}return;}
+  queueRadioReload();
+}
+async function blockRadioSource(track) {
+  if(!track||isRadioTrackBlocked(track))return;
+  await saveRadioOption({radio_blocked_tracks:[...(S.settings.radio_blocked_tracks||[]),radioTrackRecord(track)]});
+}
+async function restoreRadioSource(index) {
+  const blocked=(S.settings.radio_blocked_tracks||[]).slice();
+  if(index<0||index>=blocked.length)return;
+  const restored=blocked.splice(index,1)[0];
+  S.radioSongSeen=S.radioSongSeen.filter(track=>!sameRadioSong(track,restored));
+  for(const id of S.radioSeenOrder.filter(id=>id===restored.id||sameRadioSong(queuedTrack(id),restored)))S.radioSeen.delete(id);
+  S.radioSeenOrder=S.radioSeenOrder.filter(id=>S.radioSeen.has(id));
+  await saveRadioOption({radio_blocked_tracks:blocked});
+}
+function radioTrackIdentity(track) {
+  const clean=value=>String(value||"").normalize("NFKD").toLocaleLowerCase().replace(/\p{M}/gu,"")
+    .replace(/\b(official|audio|video|lyrics?|visuali[sz]er|remaster(?:ed)?|topic|hd|4k)\b/gu," ")
+    .replace(/[^\p{L}\p{N}]+/gu," ").trim();
+  let title=clean(track?.title),artist=clean(track?.artist);
+  if(artist&&title.startsWith(artist+" "))title=title.slice(artist.length).trim();
+  return {title,artist};
+}
+function sameRadioSong(a,b) {
+  const left=radioTrackIdentity(a),right=radioTrackIdentity(b);
+  return !!left.title&&left.title===right.title&&(!left.artist||!right.artist||left.artist===right.artist);
+}
+function radioTrackMatchesFilters(track) {
+  if(isRadioTrackBlocked(track))return true;
+  const text=`${track?.title||""} ${track?.artist||""}`;
+  const remix=/\b(remix(?:ed)?|bootleg|rework|mash[ -]?up|nightcore|speed[ -]?up|slowed|club mix|extended mix)\b|ремикс\w*|мэш[ -]?ап\w*|найткор\w*|ускоренн\w+ версия|замедленн\w+ версия/i.test(text);
+  const aiSlop=/\b(ai[ -]?(?:generated|music|cover|song|voice)|artificial intelligence|suno|udio|riffusion|stable audio|voice clone|ai slop|generated by ai)\b|ии[ -]?(?:музык\w*|кавер\w*|песн\w*|сгенерирован\w*)|нейросет\w*|создан\w+ нейросет\w*/i.test(text);
+  const instrumental=/\b(?:instrumentals?|karaoke|backing[ -]track|minus[ -]one)\b|инструментал[а-яё]*|минусовк[а-яё]*|без\s+вокала/iu.test(text);
+  return (S.settings?.radio_exclude_remixes!==false&&remix)||(S.settings?.radio_exclude_ai_slop!==false&&aiSlop)||(S.settings?.radio_exclude_instrumentals!==false&&instrumental);
+}
+function pruneRadioQueueByFilters() {
+  const currentId=S.current?.id||"";
+  const removed=S.radioQueue.filter(track=>isRadioTrackBlocked(track)||(track.id!==currentId&&radioTrackMatchesFilters(track)));
+  const removedIds=new Set(removed.map(track=>track.id));
+  if(!removedIds.size)return;
+  S.radioQueue=S.radioQueue.filter(track=>!removedIds.has(track.id));
+  S.radioSongSeen=S.radioSongSeen.filter(old=>!removed.some(track=>sameRadioSong(old,track)));
+  S.queue=S.queue.filter(id=>!removedIds.has(id));
+  S.radioSeenOrder=S.radioSeenOrder.filter(id=>!removedIds.has(id));
+  for(const id of removedIds)S.radioSeen.delete(id);
+  S.qpos=currentId?S.queue.indexOf(currentId):-1;
+  S.baseQueue=S.queue.slice();
+  S.currentGlobalResults=S.radioQueue.slice();
+  refreshQueueUi();
+}
+async function loadRadioNext({playNow=false,refresh=false}={}) {
+  if(!S.radioEnabled)return;
+  if(S.radioLoading){if(refresh||playNow){radioReloadQueued=true;radioQueuedPlayNow=radioQueuedPlayNow||playNow;}return;}
+  if(radioReloadQueued){refresh=true;playNow=playNow||radioQueuedPlayNow;radioReloadQueued=false;radioQueuedPlayNow=false;}
+  S.radioLoading=true;updateRadioUi();
+  const request=++radioRecommendationRequest;
+  try {
+    if(refresh)resetRadioUpcoming();
+    const history=topListenedTracks(radioNumber("radio_history_days",10.5,.5,365),2000).filter(track=>isOnlineMode()||!track.remote);
+    const chosen=radioSeedPool().slice(0,Math.round(radioNumber("radio_seed_count",5,1,20)));
+    const recommendationCount=Math.round(radioNumber("radio_recommendation_count",30,1,100));
   let tracks=[];
   if(isOnlineMode()&&chosen.length) {
     const provider=["all","youtube_music","youtube","soundcloud"].includes(S.settings?.radio_provider)?S.settings.radio_provider:"all";
-    const results=await Promise.allSettled(chosen.map(seed=>api("/api/radio","POST",{url:seed.url||"",title:seed.title||"",artist:seed.artist||"",provider})));
+    const results=await Promise.allSettled(chosen.map(seed=>api("/api/radio","POST",{url:seed.url||"",title:seed.title||"",artist:seed.artist||"",provider,limit:recommendationCount})));
+    if(request!==radioRecommendationRequest)return;
     const candidates=new Map();
+    const candidateTracks=[];
     results.forEach((result,seedIndex)=>{
       if(result.status!=="fulfilled")return;
       for(const [rank,item] of (result.value.tracks||result.value.results||[]).entries()) {
         if(!item?.id&&!item?.url)continue;
-        const titleKey=String(item.title||"").trim().toLocaleLowerCase();
-        const artistKey=String(item.artist||"").trim().toLocaleLowerCase();
-        if(chosen.some(seed=>String(seed.title||"").trim().toLocaleLowerCase()===titleKey&&(!artistKey||!seed.artist||String(seed.artist).trim().toLocaleLowerCase()===artistKey)))continue;
+        if(radioTrackMatchesFilters(item)||chosen.some(seed=>sameRadioSong(seed,item))
+          ||history.some(seed=>sameRadioSong(seed,item))||S.radioSongSeen.some(old=>sameRadioSong(old,item)))continue;
         const source=String(item.provider||provider||"youtube");
         const rawId=String(item.id||item.url||"");
         const id=`radio:${source}:${rawId}`;
         if(S.radioSeen.has(id))continue;
-        const old=candidates.get(id)||{track:{...item,id,provider:source,remote:true,dur:safeDuration(item.duration||item.dur)},score:0,sources:0};
-        old.score+=Math.max(1,20-rank)*(chosen[seedIndex].count||1);old.sources++;
-        candidates.set(id,old);
+        const old=candidates.get(id);
+        if(old){old.score+=Math.max(1,20-rank)*(chosen[seedIndex].count||1);old.sources++;continue;}
+        if(candidateTracks.some(oldTrack=>sameRadioSong(oldTrack,item)))continue;
+        candidateTracks.push(item);
+        candidates.set(id,{track:{...item,id,provider:source,remote:true,dur:safeDuration(item.duration||item.dur)},
+          score:Math.max(1,20-rank)*(chosen[seedIndex].count||1),sources:1});
       }
     });
-    tracks=Array.from(candidates.values()).sort((a,b)=>b.score-a.score||b.sources-a.sources).slice(0,30).map(item=>item.track);
+    tracks=Array.from(candidates.values()).sort((a,b)=>b.score-a.score||b.sources-a.sources).slice(0,recommendationCount).map(item=>item.track);
   }
   tracks.forEach(track=>S.onlineTracks.set(track.id,track));
   const knownRadioIds=new Set(S.radioQueue.map(track=>track.id));
   for(const track of tracks) {
     if(!knownRadioIds.has(track.id))S.radioQueue.push(track);
     if(!S.radioSeen.has(track.id)){S.radioSeen.add(track.id);S.radioSeenOrder.push(track.id);}
+    if(!S.radioSongSeen.some(old=>sameRadioSong(old,track)))S.radioSongSeen.push(radioTrackIdentity(track));
   }
   while(S.radioSeenOrder.length>1200)S.radioSeen.delete(S.radioSeenOrder.shift());
+  while(S.radioSongSeen.length>1200)S.radioSongSeen.shift();
   S.currentGlobalResults=S.radioQueue.slice();
   const radioSource="radio:";
   const currentId=S.current?.id||"";
   if(S.queueSource!==radioSource) {
     S.queue=[];
-    if(currentId)S.queue.push(currentId);
-    S.qpos=currentId?0:-1;
+    const includeCurrent=currentId&&!isRadioTrackBlocked(S.current);
+    if(includeCurrent)S.queue.push(currentId);
+    S.qpos=includeCurrent?0:-1;
     S.queueSource=radioSource;
     for(const track of S.radioQueue)if(!S.queue.includes(track.id))S.queue.push(track.id);
   }
@@ -2226,7 +2407,7 @@ async function loadRadioNext({playNow=false,refresh=false}={}) {
   const queueAddIds=S.settings.shuffle?shuffled(queueAddTracks.map(track=>track.id)):queueAddTracks.map(track=>track.id);
   S.queue.push(...queueAddIds);
   S.baseQueue=S.queue.slice();
-  const nextRadioTrack=(queueAddIds.length?queuedTrack(queueAddIds[0]):null)||S.radioQueue.find(track=>track.id!==currentId);
+  const nextRadioTrack=(queueAddIds.length?queuedTrack(queueAddIds[0]):null)||S.queue.slice(Math.max(0,S.qpos+1)).map(queuedTrack).find(track=>track&&track.id!==currentId&&!isRadioTrackBlocked(track));
   if(playNow&&nextRadioTrack) {
     S.qpos=S.queue.indexOf(nextRadioTrack.id);
     loadTrack(nextRadioTrack.id);
@@ -2235,18 +2416,23 @@ async function loadRadioNext({playNow=false,refresh=false}={}) {
     if(tracks.some(track=>track.remote)) {
       const preloadId=++radioPreloadSequence;
       preloadTrackArtwork(tracks);
-      preloadOnlineStreams(tracks.filter(track=>track.remote),preloadId,"radio");
+      // Prepare only the next few audio streams. Metadata is ready in /api/radio.
+      preloadOnlineStreams(tracks.filter(track=>track.remote).slice(0,3),preloadId,"radio");
     }
   } else if(playNow) toast(chosen.length?"Не удалось найти новые похожие треки для радио.":"Радио появится после 30 секунд прослушивания треков.");
   renderSidebar();if(S.view.type==="radio"||S.view.type==="queue")renderList();
-  S.radioLoading=false;updateRadioUi();
+  } catch(error) {
+    if(request===radioRecommendationRequest)toast(error.message||"Не удалось обновить радио.");
+  } finally {
+    S.radioLoading=false;updateRadioUi();renderRadioSettings();
+    if(radioReloadQueued&&S.radioEnabled)queueMicrotask(()=>loadRadioNext({refresh:true}));
+  }
 }
 async function refreshRadio() {
-  if(!S.radioEnabled||S.radioLoading)return;
-  S.radioSeen.clear();S.radioSeenOrder=[];
-  await loadRadioNext({refresh:true});
-  toast("Радио обновлено");
+  if(!S.radioEnabled)return;
+  queueRadioReload();
 }
+
 function prev() {
   if (multiOn() || !S.queue.length) return;
   if (audio.currentTime > 3) { audio.currentTime = 0; return; }
@@ -2319,6 +2505,83 @@ function deleteSelectedTracks() {
   }
   toast("Удаление доступно внутри пользовательского плейлиста или «Избранного» — файлы библиотеки не удаляются.");
 }
+const trackFileActions=new Set();
+function updateHiddenTrackSettings(settings) {
+  if(!settings)return;
+  if(Array.isArray(settings.hidden_tracks))S.settings.hidden_tracks=settings.hidden_tracks;
+  if(settings.hidden_playlist_tracks&&typeof settings.hidden_playlist_tracks==="object")S.settings.hidden_playlist_tracks=settings.hidden_playlist_tracks;
+}
+function renderHiddenTracksSetting() {
+  const hidden=new Set([...(S.settings.hidden_tracks||[]),...Object.values(S.settings.hidden_playlist_tracks||{}).flat()]);
+  $("#hiddenTracksCount").textContent=hidden.size?`Скрыто треков: ${hidden.size}. Их файлы сохранены на компьютере.`:"Скрытых треков нет.";
+  $("#restoreHiddenTracks").disabled=!hidden.size;
+}
+async function restoreHiddenTracks() {
+  if(!await flushSettings())return;
+  const previousTracks=S.settings.hidden_tracks||[],previousPlaylists=S.settings.hidden_playlist_tracks||{};
+  S.settings.hidden_tracks=[];S.settings.hidden_playlist_tracks={};
+  const saved=await setSetting({hidden_tracks:[],hidden_playlist_tracks:{}},{immediate:true});
+  if(!saved){S.settings.hidden_tracks=previousTracks;S.settings.hidden_playlist_tracks=previousPlaylists;renderHiddenTracksSetting();return;}
+  syncMiniLibraryCatalog();renderSidebar();renderList();renderHiddenTracksSetting();
+  toast("Скрытые треки снова показаны. Состав пользовательских плейлистов сохранён.");
+}
+function removeTrackFromUpcomingQueue(id) {
+  const currentId=S.current?.id||"";
+  S.queue=S.queue.filter(trackId=>trackId!==id||trackId===currentId);
+  S.baseQueue=S.queue.slice();S.qpos=currentId?S.queue.indexOf(currentId):-1;
+}
+async function hideTrackFromList(id) {
+  if(trackFileActions.has(id))return;
+  const view={...S.view};
+  if(view.type==="custompl") {
+    const playlist=S.customPlaylists.find(item=>item.id===view.key);if(!playlist)return;
+    playlist.ids=playlist.ids.filter(trackId=>trackId!==id);
+    if(playlist.remoteTracks)delete playlist.remoteTracks[id];
+    saveCustomPlaylists();
+  } else if(view.type==="fav") {
+    await toggleFavorite(id);
+  } else {
+    trackFileActions.add(id);
+    try {
+      const playlistKey=view.type==="pl"?view.key:"";
+      const response=await api("/api/track/hide","POST",{id,playlist_key:playlistKey});
+      if(response.settings)updateHiddenTrackSettings(response.settings);
+      else if(playlistKey){const hidden=S.settings.hidden_playlist_tracks||{};S.settings.hidden_playlist_tracks={...hidden,[playlistKey]:Array.from(new Set([...(hidden[playlistKey]||[]),id]))};}
+      else S.settings.hidden_tracks=Array.from(new Set([...(S.settings.hidden_tracks||[]),id]));
+    } catch(error){toast(error.message||"Не удалось убрать трек из списка.");return;}
+    finally{trackFileActions.delete(id);}
+  }
+  S.selected.delete(id);removeTrackFromUpcomingQueue(id);syncMiniLibraryCatalog();renderSidebar();renderList();updateSelectButton();
+  toast("Трек убран из списка. Файл сохранён.");
+}
+function releaseTrackFile(id) {
+  if(S.layers.some(layer=>layer.id===id))removeLayer(id);
+  const preload=neighborPreloads.get(id);
+  if(preload){preload.pause();preload.removeAttribute("src");preload.load();neighborPreloads.delete(id);}
+  if(S.current?.id===id){
+    audio.pause();disposeHlsPlayer();audio.removeAttribute("src");audio.load();
+    S.current=null;S.remoteLoadToken++;closeNowPlaying();updateNowPlayingUi();updatePlayButton();sendNowPlaying();applyBackground();
+  }
+}
+async function deleteTrackFile(id) {
+  if(trackFileActions.has(id))return;
+  const track=S.byId.get(id);if(!track||track.remote)return;
+  const accepted=await cutePrompt({title:"Удалить аудиофайл?",subtitle:`«${track.title}» будет удалён с компьютера и из всех плейлистов плеера. Чтобы убрать только из текущего списка, используй крестик.`,confirmText:"Удалить файл",confirmOnly:true});
+  if(!accepted||trackFileActions.has(id))return;
+  trackFileActions.add(id);
+  try {
+    releaseTrackFile(id);
+    const response=await api("/api/track/delete","POST",{id});
+    updateHiddenTrackSettings(response.settings);
+    S.tracks=S.tracks.filter(item=>item.id!==id);S.byId.delete(id);S.selected.delete(id);
+    S.settings.favorites=S.settings.favorites.filter(trackId=>trackId!==id);
+    if(S.settings.last?.id===id)S.settings.last={id:"",pos:0};
+    for(const playlist of S.customPlaylists){playlist.ids=playlist.ids.filter(trackId=>trackId!==id);if(playlist.remoteTracks)delete playlist.remoteTracks[id];}
+    saveCustomPlaylists();removeTrackFromUpcomingQueue(id);syncMiniLibraryCatalog();renderSidebar();renderList();updateSelectButton();refreshLibrarySoon();
+    toast("Аудиофайл удалён с компьютера.");
+  } catch(error){toast(error.message||"Не удалось удалить файл. Возможно, он открыт в другой программе.");}
+  finally{trackFileActions.delete(id);}
+}
 async function downloadSelectedClips() {
   const tracks=Array.from(S.selected,id=>S.byId.get(id)||S.onlineTracks.get(id)||storedRemoteTrack(id)).filter(track=>track?.id&&track.title);
   if(!tracks.length){toast("Сначала выбери треки для клипов.");return;}
@@ -2332,7 +2595,7 @@ async function downloadSelectedClips() {
       const track=tracks[index];
       button.innerHTML=`${icon("video")} ${index+1}/${tracks.length}`;
       try{
-        let job=await api("/api/clips/download","POST",{id:track.id,title:track.title,artist:track.artist||""});
+        let job=await api("/api/clips/download","POST",{id:track.id,title:track.title,artist:track.artist||"",url:track.url||""});
         while(job.status!=="finished"&&job.status!=="failed"&&job.status!=="cancelled"){
           await new Promise(resolve=>setTimeout(resolve,1000));
           job=await api("/api/clips/status?id="+encodeURIComponent(job.id));
@@ -2633,36 +2896,41 @@ function setPlaybackRate(value) {
   if(slider&&document.activeElement!==slider)slider.value=String(rate);
   if(label)label.textContent=`${rate.toFixed(2)}×`;
 }
-let mediaSessionPositionAt=0;
+let mediaSessionPositionAt=0,mediaSessionMetadataKey="";
 function updateMediaSession(updateMetadata=false) {
   if (!("mediaSession" in navigator)) return;
-  const track = S.current;
+  const session=navigator.mediaSession,mixing=multiOn()&&S.layers.length>0;
+  const track=mixing?queuedTrack(S.layers[0].id):S.current;
+  const hasTrack=!!track||mixing;
+  const title=mixing?S.layers.map(layer=>queuedTrack(layer.id)?.title||"Трек").join(" + "):String(track?.title||"Без названия");
+  const artist=mixing?`Мульти-треки · ${S.layers.length}`:String(track?.artist||"Неизвестный исполнитель");
+  const art=track?.remote?track.thumbnail:(track?.cover?tk("/cover/"+track.id):"/app-icon.png");
+  const key=hasTrack?JSON.stringify([title,artist,track?.album||track?.source||"LAST FREQUENCY",art]):"";
+  if(updateMetadata||key!==mediaSessionMetadataKey) {
+    let artwork=[];
+    try { if(art)artwork=[{src:new URL(art,document.baseURI).href,sizes:"any"}]; } catch (_) {}
+    try {
+      session.metadata=hasTrack&&typeof window.MediaMetadata==="function"?new window.MediaMetadata({title,artist,album:String(track?.album||track?.source||"LAST FREQUENCY"),artwork}):null;
+      mediaSessionMetadataKey=key;
+    } catch (_) {
+      // A rejected cover must not suppress the title or playback state.
+      try {session.metadata=hasTrack?new window.MediaMetadata({title,artist,album:"LAST FREQUENCY"}):null;mediaSessionMetadataKey=key;} catch (_) {}
+    }
+  }
+  try {session.playbackState=hasTrack?(anyPlaying()?"playing":"paused"):"none";} catch (_) {}
+  const duration=Number(audio.duration),position=Number(audio.currentTime);
   try {
-    if(updateMetadata) {
-      const artworkUrl=track?.remote?track.thumbnail:(track?.cover?tk("/cover/"+track.id):"");
-      let artwork=[];
-      if(artworkUrl)try{artwork=[{src:new URL(artworkUrl,document.baseURI).href,sizes:"512x512"}];}catch(_){}
-      const metadata=track?{
-        title:String(track.title||"Без названия"),
-        artist:String(track.artist||"Неизвестный исполнитель"),
-        album:String(track.album||track.source||"LAST FREQUENCY"),
-        artwork,
-      }:null;
-      navigator.mediaSession.metadata = metadata&&typeof window.MediaMetadata==="function"
-        ?new window.MediaMetadata(metadata):null;
-    }
-    navigator.mediaSession.playbackState=track?(audio.paused?"paused":"playing"):"none";
-    const duration=Number(audio.duration), position=Number(audio.currentTime);
-    if(Number.isFinite(duration)&&duration>0&&Number.isFinite(position)) {
-      navigator.mediaSession.setPositionState({duration,playbackRate:audio.playbackRate||1,position:Math.max(0,Math.min(duration,position))});
-      mediaSessionPositionAt=Date.now();
-    }
-  } catch (error) { /* не критично */ }
+    if(!mixing&&hasTrack&&Number.isFinite(duration)&&duration>0&&Number.isFinite(position)) {
+      session.setPositionState({duration,playbackRate:audio.playbackRate||1,position:Math.max(0,Math.min(duration,position))});
+    } else if(!hasTrack||mixing)session.setPositionState();
+    mediaSessionPositionAt=Date.now();
+  } catch (_) {}
 }
+
 function setupMediaSession() {
   if (!("mediaSession" in navigator)) return;
   const set = (action, handler) => { try { navigator.mediaSession.setActionHandler(action, handler); } catch (e) { /* нет поддержки */ } };
-  set("play", () => playAudio()); set("pause", () => audio.pause());
+  set("play", () => {if(!anyPlaying())togglePlay();}); set("pause", () => {if(anyPlaying())togglePlay();});
   set("previoustrack", () => prev()); set("nexttrack", () => next());
   set("seekto", d => { if (Number.isFinite(d.seekTime)) audio.currentTime=Math.max(0,Math.min(Number(audio.duration)||d.seekTime,d.seekTime)); });
   set("seekbackward", d => { audio.currentTime=Math.max(0,audio.currentTime-(Number(d.seekOffset)||10)); });
@@ -2768,6 +3036,7 @@ function updateMultiBar() {
   $("#barTitle").textContent = n ? `Мульти-треки: ${n}` : "Мульти-треки";
   $("#barArtist").textContent = n ? S.layers.map((l) => layerTitle(l.id)).join(" + ") : "Выбери треки в списке";
   document.title = n ? `Мульти-треки (${n}) · LAST FREQUENCY` : "Мульти-треки · LAST FREQUENCY";
+  updateMediaSession();
 }
 function renderLayers() {
   const box = $("#layers");
@@ -3333,6 +3602,7 @@ function clearViz() {
 function restartViz() { vizLoop.stop(); resizeViz(); clearViz(); startViz(); }
 document.addEventListener("visibilitychange", () => {
   document.body.classList.toggle("win-hidden", document.hidden);
+  syncBackgroundClip();
   if (document.hidden) { vizLoop.stop(); clearViz(); dvdLoop.stop(); stopFxLoop(); }
   else { updateDvdIcon(); startViz(); updateThemeFx(); }
 });
@@ -3578,6 +3848,7 @@ function applyPerformanceModeUi() {
 function selectTab(name) {
   $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
   $$("[data-pane]").forEach((p) => p.classList.toggle("hidden", p.dataset.pane !== name));
+  if(name==="radio")renderRadioSettings();
 }
 const NUMERIC_LIMITS = {
   miniScale:[50,180], radius:[0,64], glass:[0,95], trackScale:[50,200], rowScale:[75,400],
@@ -4307,6 +4578,8 @@ function handleHomeTrackClick(event) {
 }
 
 function renderSettingsDynamic() {
+  renderHiddenTracksSetting();
+  renderRadioSettings();
   const custom=S.settings.custom_theme||{}, themeCards={...THEMES,custom:{...THEMES.custom,bg:[custom.bg1||"#12131c",custom.bg2||"#1a1d3a",custom.bg3||"#2b1d47"],accent:custom.accent||"#8b95ff"}};
   $("#themes").innerHTML = THEME_IDS.map(id => [id, themeCards[id]]).map(([id, t]) =>
     `<button class="theme${S.settings.theme === id ? " active" : ""}" data-theme="${id}"><div class="sw" style="background:linear-gradient(135deg,${t.bg.join(",")})"><i style="background:${t.accent}"></i></div><div class="nm">${esc(t.name)}</div></button>`).join("");
@@ -4368,7 +4641,7 @@ function saveDownloadHistory(){try{localStorage.setItem(DOWNLOAD_HISTORY_KEY,JSO
 function renderDownloadHistory(){const box=$("#downloadHistory"),count=$("#downloadHistoryCount");if(!box||!count)return;count.textContent=String(downloadHistory.length);box.innerHTML=`<div class="job-head" style="margin-bottom:7px"><b>Недавние загрузки</b><span style="flex:1"></span>${downloadHistory.length?'<button class="btn small" data-download-history-clear>Очистить</button>':''}</div>`+(downloadHistory.length?`<div class="download-history-list">${downloadHistory.map(item=>`<div class="download-history-item ${item.status==='failed'?'failed':''}"><span class="name" title="${safeDownloadText(item.name)}">${safeDownloadText(item.name)}</span><span class="result">${safeDownloadText(item.result||'Готово')}</span></div>`).join('')}</div>`:'<div class="note">История пока пуста.</div>');}
 function archiveDownloadJob(job){if(job._archived)return;job._archived=true;const card=$("#downloadActive").querySelector(`[data-job="${CSS.escape(job.id)}"]`);if(card)card.remove();downloadJobs.delete(job.id);downloadHistory.unshift({name:job.filename||"Загрузка MP3",status:job.status,result:job.error||(job.result?.skipped_drm?`Скачано ${job.result.downloaded}; DRM пропущено: ${job.result.skipped_drm}`:job.status==="finished"?"Готово":"Отменено"),time:Date.now()});downloadHistory=downloadHistory.slice(0,30);saveDownloadHistory();renderDownloadHistory();}
 
-function renderDownloadJob(job){const box=$("#downloadActive");let card=box.querySelector(`[data-job="${CSS.escape(job.id)}"]`);if(!card){card=document.createElement("div");card.className="download-job";card.dataset.job=job.id;box.prepend(card);}const done=["finished","failed","cancelled"].includes(job.status),canCancel=!done&&job.status!=="cancelling",pct=Math.max(0,Math.min(100,Number(job.percent)||0));const clipStage=job.status==="processing"&&String(job.filename||"").startsWith("Докачиваю клип");const status=job.status==="finished"?"Готово":job.status==="failed"?"Ошибка":job.status==="cancelled"?"Отменено":job.status==="cancelling"?"Отменяю…":job.status==="preparing"?"В очереди загрузки…":clipStage?"Докачиваю клип…":job.status==="processing"?"Обработка MP3…":"Скачивается";const size=job.total?`${formatBytes(job.downloaded)} из ${formatBytes(job.total)}`:formatBytes(job.downloaded);const speed=job.speed?` · ${formatBytes(job.speed)}/с`:"";const detail=job.error||(job.result?.skipped_drm?`Скачано ${job.result.downloaded}; DRM-защищённых пропущено: ${job.result.skipped_drm}`:`${pct.toFixed(1)}% · ${size}${speed}`);card.innerHTML=`<div class="job-head"><b class="job-title">${safeDownloadText(job.filename||"Загрузка MP3")}</b><span>${status}</span></div><progress max="100" value="${pct}"></progress><div class="job-meta"><span>${safeDownloadText(detail)}</span>${canCancel?`<button class="btn small danger" data-download-cancel="${safeDownloadText(job.id)}">Отменить</button>`:""}</div>`;if(job.status==="finished"&&!job.notified){job.notified=true;const failed=Number(job.result?.clips_failed)||0;toast(job.result?.skipped_drm?`MP3 загружен; DRM-защищённых пропущено: ${job.result.skipped_drm}`:failed?`MP3 добавлен в библиотеку, но клип не найден.`:"MP3 загружен и добавлен в библиотеку");refreshLibrarySoon();}if(done&&!job._settleTimer)job._settleTimer=setTimeout(()=>archiveDownloadJob(job),10000);}
+function renderDownloadJob(job){const box=$("#downloadActive");let card=box.querySelector(`[data-job="${CSS.escape(job.id)}"]`);if(!card){card=document.createElement("div");card.className="download-job";card.dataset.job=job.id;box.prepend(card);}const done=["finished","failed","cancelled"].includes(job.status),canCancel=!done&&job.status!=="cancelling",pct=Math.max(0,Math.min(100,Number(job.percent)||0));const clipStage=job.status==="processing"&&String(job.filename||"").startsWith("Докачиваю клип");const status=job.status==="finished"?"Готово":job.status==="failed"?"Ошибка":job.status==="cancelled"?"Отменено":job.status==="cancelling"?"Отменяю…":job.status==="preparing"?"В очереди загрузки…":clipStage?"Докачиваю клип…":job.status==="processing"?"Обработка MP3…":"Скачивается";const size=job.total?`${formatBytes(job.downloaded)} из ${formatBytes(job.total)}`:formatBytes(job.downloaded);const speed=job.speed?` · ${formatBytes(job.speed)}/с`:"";const detail=job.error||(job.result?.clips_failed?"Клип не скачан: "+(job.result.clip_errors||[]).join("; "):(job.result?.skipped_drm?`Скачано ${job.result.downloaded}; DRM-защищённых пропущено: ${job.result.skipped_drm}`:`${pct.toFixed(1)}% · ${size}${speed}`));card.innerHTML=`<div class="job-head"><b class="job-title">${safeDownloadText(job.filename||"Загрузка MP3")}</b><span>${status}</span></div><progress max="100" value="${pct}"></progress><div class="job-meta"><span>${safeDownloadText(detail)}</span>${canCancel?`<button class="btn small danger" data-download-cancel="${safeDownloadText(job.id)}">Отменить</button>`:""}</div>`;if(job.status==="finished"&&!job.notified){job.notified=true;const failed=Number(job.result?.clips_failed)||0;toast(job.result?.skipped_drm?`MP3 загружен; DRM-защищённых пропущено: ${job.result.skipped_drm}`:failed?`MP3 добавлен в библиотеку, но клип не найден.`:"MP3 загружен и добавлен в библиотеку");refreshLibrarySoon();}if(done&&!job._settleTimer)job._settleTimer=setTimeout(()=>archiveDownloadJob(job),10000);}
 function scheduleDownloadPoll(){clearTimeout(downloadPollTimer);if(!Array.from(downloadJobs.values()).some(job=>!["finished","failed","cancelled"].includes(job.status)))return;downloadPollTimer=setTimeout(pollDownloadJobs,700);}
 async function pollDownloadJobs(){for(const [id,job] of downloadJobs){if(["finished","failed","cancelled"].includes(job.status))continue;try{const latest=await api("/api/download/status?id="+encodeURIComponent(id));Object.assign(job,latest);renderDownloadJob(job);}catch(error){downloadJobs.delete(id);toast(error.message);}}scheduleDownloadPoll();}
 
@@ -4386,6 +4659,22 @@ async function startMp3Download(url,isPlaylist=false,provider="",playlistTitle="
 function showRemoteResults(items, isPlaylist=false) { const box=$("#downloadResults"); if(!items||!items.length){box.innerHTML='<div class="note">Ничего не найдено.</div>';return;} box.innerHTML=items.map((item,index)=>{const buttons=!isPlaylist?(S.activeClipsEnabled?`<div class="download-result-actions"><button class="btn small primary" data-download-item="${index}" data-include-clip="1" title="Скачать трек и докачать клип">Скачать+</button><button class="btn small" data-download-item="${index}" title="Скачать только трек">Скачать-</button></div>`:`<button class="btn small primary" data-download-item="${index}" title="Скачать трек">Скачать</button>`):`<button class="btn small primary" data-download-item="${index}">MP3</button>`;const hint=!isPlaylist&&S.activeClipsEnabled?'<div class="download-result-hint">Скачать+ — докачать клип · Скачать- — только трек</div>':'';return `<div class="download-result-wrap"><div class="download-result"><img src="${safeDownloadText(item.thumbnail)}" alt=""><div class="meta"><div class="title">${safeDownloadText(item.title)}</div><div class="sub">${safeDownloadText(item.artist)}${item.duration?' · '+fmtTime(item.duration):''}</div></div>${buttons}</div>${hint}</div>`;}).join(""); box._items=items; box._isPlaylist=isPlaylist; }
 async function runDownloadSearch(provider) { const query=$("[data-download-query=\""+provider+"\"]").value.trim(); if(!query)return toast("Введи название трека."); const box=$("#downloadResults"); box.innerHTML='<div class="note">Ищу…</div>'; try{ const data=await api("/api/download/search","POST",{provider,query}); showRemoteResults(data.results); }catch(e){box.innerHTML='<div class="note">'+safeDownloadText(e.message)+'</div>';}}
 function bindSettings() {
+  $("#restoreHiddenTracks").onclick=()=>restoreHiddenTracks().catch(error=>toast(error.message||"Не удалось вернуть скрытые треки."));
+  for(const [id,key,min,max,step] of [["radioRecommendationCount","radio_recommendation_count",1,100,1],["radioSeedCount","radio_seed_count",1,20,1],["radioHistoryDays","radio_history_days",.5,365,.5]]){
+    $("#"+id).addEventListener("change",event=>{
+      const number=Number(event.target.value);
+      if(!event.target.value.trim()||!Number.isFinite(number)){event.target.value=radioNumber(key,key==="radio_history_days"?10.5:key==="radio_seed_count"?5:30,min,max);return;}
+      const value=Math.round(Math.max(min,Math.min(max,number))/step)*step;event.target.value=value;
+      saveRadioOption({[key]:value}).catch(error=>toast(error.message||"Не удалось сохранить настройки радио."));
+    });
+  }
+  $("#radioSourcesToggle").onclick=()=>{const list=$("#radioSourcesList"),open=list.classList.contains("hidden");list.classList.toggle("hidden",!open);$("#radioSourcesToggle").setAttribute("aria-expanded",String(open));renderRadioSettings();};
+  $("#radioSourcesList").addEventListener("click",event=>{
+    const button=event.target.closest("[data-radio-block],[data-radio-block-recommendation]");if(!button)return;
+    const track=button.hasAttribute("data-radio-block")?radioSourceEntries[Number(button.dataset.radioBlock)]:radioRecommendationEntries[Number(button.dataset.radioBlockRecommendation)];
+    blockRadioSource(track).catch(error=>toast(error.message||"Не удалось исключить трек."));
+  });
+  $("#radioBlockedTracks").addEventListener("click",event=>{const button=event.target.closest("[data-radio-restore]");if(button)restoreRadioSource(Number(button.dataset.radioRestore)).catch(error=>toast(error.message||"Не удалось вернуть трек в радио."));});
   bindNumericSettings();
   $("#openSettings").onclick = () => openSettings();
   $$("[data-download-search]").forEach(button=>button.onclick=()=>runDownloadSearch(button.dataset.downloadSearch));
@@ -4614,14 +4903,13 @@ function bindUi() {
     setSetting({search_provider:e.target.value},{immediate:true});
     if($("#globalSearch").value.trim()) { ++globalSearchSequence; clearTimeout(globalSearchTimer); globalSearchTimer=setTimeout(()=>runGlobalSearch(),180); }
   });
-  $("#radioProvider").addEventListener("change", async e => {
+  $("#radioProvider").addEventListener("change",e=>{
     const provider=["all","youtube_music","youtube","soundcloud"].includes(e.target.value)?e.target.value:"all";
-    await setSetting({radio_provider:provider},{immediate:true});
-    if(S.view.type==="radio"){
-      S.radioSeen.clear();S.radioSeenOrder=[];S.radioQueue=[];S.queueSource="";
-      loadRadioNext({refresh:true,playNow:false});
-    }
+    saveRadioOption({radio_provider:provider}).catch(error=>toast(error.message||"Не удалось сохранить источник радио."));
   });
+  for(const [id,key] of [["radioExcludeRemixes","radio_exclude_remixes"],["radioExcludeAiSlop","radio_exclude_ai_slop"],["radioExcludeInstrumentals","radio_exclude_instrumentals"]]){
+    $("#"+id).addEventListener("change",e=>saveRadioOption({[key]:e.target.checked}).catch(error=>toast(error.message||"Не удалось сохранить фильтр радио.")));
+  }
   $("#globalSearchKind").addEventListener("change",()=>{
     try{localStorage.setItem("last-frequency.search-kind.v1",$("#globalSearchKind").value);}catch(_){}
     if($("#globalSearch").value.trim()){++globalSearchSequence;clearTimeout(globalSearchTimer);globalSearchTimer=setTimeout(()=>runGlobalSearch(),100);}
@@ -4689,6 +4977,10 @@ function bindUi() {
   $("#sort").onchange = (e) => { S.sort = e.target.value; renderList(); };
   $("#list").addEventListener("click", (e) => {
     if(Date.now()<ignoreListClickUntil)return;
+    const hideTrack=e.target.closest("[data-hide-track]");
+    if(hideTrack){e.stopPropagation();hideTrackFromList(hideTrack.dataset.hideTrack).catch(error=>toast(error.message||"Не удалось убрать трек."));return;}
+    const deleteTrack=e.target.closest("[data-delete-track]");
+    if(deleteTrack){e.stopPropagation();deleteTrackFile(deleteTrack.dataset.deleteTrack).catch(error=>toast(error.message||"Не удалось удалить файл."));return;}
     const queueRemove=e.target.closest("[data-queue-remove]");
     if(queueRemove){e.stopPropagation();removeUpcomingTrack(queueRemove.dataset.queueRemove);return;}
     const sel = e.target.closest("[data-select]");
@@ -4850,7 +5142,7 @@ async function checkForGitHubUpdate() {
         }
         if(job.status==="failed")throw new Error(job.error||"Не удалось скачать обновление.");
         try { localStorage.setItem("last-frequency.dismissed-update",update.latest); } catch (_) {}
-        toast(job.opened?"Обновление устанавливается. Плеер перезапустится автоматически.":"Установщик скачан в папку Downloads.");
+        toast(job.opened?"Обновление сохранено рядом с плеером. Плеер закроется для установки.":job.error?"Обновление сохранено рядом с плеером, но открыть установщик не удалось: "+job.error:"Обновление сохранено рядом с плеером.");
       } catch(error) { toast("Не удалось скачать обновление: "+String(error.message||error)); }
     }
     else try { localStorage.setItem("last-frequency.dismissed-update",update.latest); } catch (_) {}

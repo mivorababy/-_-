@@ -16,6 +16,12 @@
 /play_history.json
 /playlist_sources.json
 /remote_favorites.json
+/chat-data/
+/updates/
+/webview-profile/
+/.maintenance-archive/
+*.previous
+*.update-new
 /logs/
 
 # Build outputs and downloaded runtime dependencies

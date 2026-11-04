@@ -7,6 +7,7 @@
 в Discord (Rich Presence, нужен pypresence) и умеет менять тему и фон.
 """
 
+import base64
 import hashlib
 import difflib
 import filecmp
@@ -36,7 +37,7 @@ from mini_player import FloatingMiniPlayer
 
 logger = logging.getLogger("player")
 
-VERSION = "1.29-last-frequency"
+VERSION = "1.31-last-frequency"
 MAX_LAYERS = 8  # сколько треков можно играть одновременно в режиме «мульти-треки»
 APP_ID = "last-frequency"
 DEFAULT_PORT = 8775
@@ -71,6 +72,26 @@ _UPDATE_CACHE = {"checked_at": 0.0, "payload": None}
 _UPDATE_CACHE_LOCK = threading.Lock()
 _UPDATE_DOWNLOAD_JOBS = {}
 _UPDATE_DOWNLOAD_JOBS_LOCK = threading.Lock()
+_CHAT_SERVICE = None
+
+
+def configure_chat(settings: dict) -> None:
+    """No chat module, network listener or polling is created while chat is disabled."""
+    global _CHAT_SERVICE
+    if not settings.get("chat_enabled", False):
+        if _CHAT_SERVICE is not None:
+            _CHAT_SERVICE.close()
+            _CHAT_SERVICE = None
+        return
+    if _CHAT_SERVICE is None:
+        from chat_service import ChatService
+        _CHAT_SERVICE = ChatService(PLAYER_DIR)
+    try:
+        _CHAT_SERVICE.configure(settings)
+    except Exception:
+        logger.exception("Не удалось включить необязательный чат")
+        _CHAT_SERVICE.close()
+        _CHAT_SERVICE = None
 
 
 class _OnlineStreamDrmError(RuntimeError):
@@ -396,6 +417,21 @@ DEFAULT_SETTINGS = {
     "font": "bold",
     "search_provider": "all",
     "radio_provider": "all",
+    "radio_exclude_remixes": True,
+    "radio_exclude_ai_slop": True,
+    "radio_exclude_instrumentals": True,
+    "radio_recommendation_count": 30,
+    "radio_seed_count": 5,
+    "radio_history_days": 10.5,
+    "radio_blocked_tracks": [],
+    "hidden_tracks": [],
+    "hidden_playlist_tracks": {},
+    "chat_enabled": False,
+    "chat_nickname": "",
+    "chat_server_url": "",
+    "chat_token": "",
+    "chat_host_enabled": False,
+    "chat_host_port": 8786,
     "playlist_track_order": {},
     "density": "comfortable",
     "visualizer": "bars",
@@ -483,7 +519,8 @@ def github_update_status(force: bool = False) -> dict:
             })
             assets = [item for item in release.get("assets", []) if isinstance(item, dict)]
             executables = [item for item in assets if str(item.get("name") or "").lower().endswith(".exe")]
-            preferred = next((item for item in executables if "setup" in str(item.get("name") or "").lower()), None)
+            preferred = next((item for item in executables if FROZEN and str(item.get("name") or "").lower() == "lastfrequency.exe"), None)
+            preferred = preferred or next((item for item in executables if "setup" in str(item.get("name") or "").lower()), None)
             preferred = preferred or next((item for item in executables if str(item.get("name") or "").lower() == "lastfrequency.exe"), None)
             preferred = preferred or (executables[0] if executables else None)
             download_url = str((preferred or {}).get("browser_download_url") or "")
@@ -501,6 +538,51 @@ def _update_download_snapshot(job_id: str) -> dict:
         if not job:
             raise ValueError("Загрузка обновления не найдена")
         return {key: value for key, value in job.items() if key not in ("path", "url")}
+
+
+def _launch_update_asset_after_exit(path: Path, player_pid: int) -> None:
+    """Wait for this player process to exit, then open the downloaded installer normally."""
+    if os.name != "nt":
+        raise OSError("Автоматический запуск обновления доступен только в Windows")
+    powershell = Path(os.environ.get("WINDIR", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    if not powershell.is_file():
+        found = shutil.which("powershell.exe")
+        if not found:
+            raise OSError("Не найден Windows PowerShell для запуска установщика после выхода")
+        powershell = Path(found)
+    safe_path = str(path.resolve()).replace("'", "''")
+    player_dir = str(PLAYER_DIR.resolve()).replace("'", "''")
+    target = Path(sys.executable).resolve() if FROZEN else PLAYER_DIR / "LastFrequency.exe"
+    target_path = str(target).replace("'", "''")
+    update_log = str(PLAYER_DIR / "logs" / "update.log").replace("'", "''")
+    if path.name.lower().startswith("lastfrequency-setup-"):
+        install_arg = ('"/DIR=' + str(PLAYER_DIR.resolve()) + '"').replace("'", "''")
+        action = f"Start-Process -FilePath '{safe_path}' -ArgumentList '{install_arg}'"
+    else:
+        action = (f"$lfTarget='{target_path}'; $lfNew=$lfTarget+'.update-new'; $lfBackup=$lfTarget+'.previous'; "
+                  "if (Test-Path -LiteralPath $lfTarget) { Copy-Item -LiteralPath $lfTarget -Destination $lfBackup -Force }; "
+                  "try { "
+                  f"Copy-Item -LiteralPath '{safe_path}' -Destination $lfNew -Force; "
+                  "$lfDeadline=[DateTime]::UtcNow.AddSeconds(20); "
+                  "while ($true) { try { Move-Item -LiteralPath $lfNew -Destination $lfTarget -Force; break } "
+                  "catch { if ([DateTime]::UtcNow -ge $lfDeadline) { throw }; Start-Sleep -Milliseconds 300 } }; "
+                  f"$lfLaunched=Start-Process -FilePath $lfTarget -WorkingDirectory '{player_dir}' -PassThru; "
+                  "if ($lfLaunched.WaitForExit(2000) -and $lfLaunched.ExitCode -ne 0) { throw 'Updated player failed to start' } "
+                  "} catch { $lfFailure=$_; "
+                  "if (Test-Path -LiteralPath $lfBackup) { Copy-Item -LiteralPath $lfBackup -Destination $lfTarget -Force; "
+                  f"Start-Process -FilePath $lfTarget -WorkingDirectory '{player_dir}' }}; throw $lfFailure }}")
+    script = (f"while (Get-Process -Id {int(player_pid)} -ErrorAction SilentlyContinue) "
+              "{ Start-Sleep -Milliseconds 250 }; "
+              f"$ErrorActionPreference='Stop'; try {{ {action} }} "
+              f"catch {{ Add-Content -LiteralPath '{update_log}' -Value $_.Exception.Message }}")
+    encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+    flags = (getattr(subprocess, "DETACHED_PROCESS", 0)
+             | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+             | getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    subprocess.Popen([str(powershell), "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
+                      "-EncodedCommand", encoded], cwd=str(path.parent),
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     close_fds=True, creationflags=flags)
 
 
 def _start_update_download() -> dict:
@@ -528,7 +610,7 @@ def _start_update_download() -> dict:
                 raise RuntimeError("В релизе не найден поддерживаемый установщик LAST FREQUENCY.")
             version = re.sub(r"[^A-Za-z0-9._-]", "", str(update.get("latest") or ""))[:40]
             filename = f"LastFrequency-Setup-{version}.exe" if "setup" in asset_name.lower() else f"LastFrequency-{version}.exe"
-            destination_dir = Path.home() / "Downloads"
+            destination_dir = PLAYER_DIR / "updates"
             destination_dir.mkdir(parents=True, exist_ok=True)
             destination = destination_dir / filename
             temporary = destination.with_name(destination.name + f".{job_id}.part")
@@ -558,22 +640,32 @@ def _start_update_download() -> dict:
                 os.fsync(output.fileno())
             if downloaded < 1024 * 1024:
                 raise RuntimeError("Скачанный установщик слишком мал и выглядит неполным.")
+            if total and downloaded != total:
+                raise RuntimeError("Обновление загружено не полностью. Попробуй ещё раз.")
+            with temporary.open("rb") as downloaded_file:
+                if downloaded_file.read(2) != b"MZ":
+                    raise RuntimeError("Вместо EXE получен неподдерживаемый файл обновления.")
             temporary.replace(destination)
             opened = False
+            close_player = False
+            open_error = ""
             if os.name == "nt":
                 try:
-                    if asset_name.lower() == "lastfrequency-setup.exe":
-                        subprocess.Popen([str(destination), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-"],
-                                         cwd=str(destination.parent), close_fds=True)
-                        shutdown_server()
-                    else:
-                        os.startfile(str(destination))
+                    _launch_update_asset_after_exit(destination, os.getpid())
                     opened = True
-                except OSError:
-                    logger.warning("Не удалось открыть скачанный установщик: %s", destination)
+                    close_player = True
+                except OSError as error:
+                    open_error = str(error)[:300]
+                    logger.exception("Не удалось подготовить запуск скачанного обновления после закрытия плеера")
             with _UPDATE_DOWNLOAD_JOBS_LOCK:
                 job.update(status="finished", percent=100, downloaded=downloaded,
-                           total=total or downloaded, path=str(destination), opened=opened)
+                           total=total or downloaded, path=str(destination), opened=opened, error=open_error)
+            if close_player:
+                def close_before_install():
+                    shutdown_server()
+                close_timer = threading.Timer(1.5, close_before_install)
+                close_timer.daemon = True
+                close_timer.start()
         except Exception as error:
             if temporary is not None:
                 try: temporary.unlink(missing_ok=True)
@@ -908,6 +1000,29 @@ def sanitize_settings(data: dict, base: dict) -> dict:
     out["font"] = _choice(data.get("font"), ("system", "serif", "mono", "rounded", "quicksand", "pacifico", "bold", "roboto", "opensans", "montserrat", "lato", "inter"), base["font"])
     out["search_provider"] = _choice(data.get("search_provider"), ("all", "youtube_music", "youtube", "soundcloud"), base.get("search_provider", "all"))
     out["radio_provider"] = _choice(data.get("radio_provider"), ("all", "youtube_music", "youtube", "soundcloud"), base.get("radio_provider", "all"))
+    out["radio_exclude_remixes"] = _bool(data.get("radio_exclude_remixes"), base.get("radio_exclude_remixes", True))
+    out["radio_exclude_ai_slop"] = _bool(data.get("radio_exclude_ai_slop"), base.get("radio_exclude_ai_slop", True))
+    out["radio_exclude_instrumentals"] = _bool(data.get("radio_exclude_instrumentals"), base.get("radio_exclude_instrumentals", True))
+    out["radio_recommendation_count"] = int(_num(data.get("radio_recommendation_count"), 1, 100, base.get("radio_recommendation_count", 30)))
+    out["radio_seed_count"] = int(_num(data.get("radio_seed_count"), 1, 20, base.get("radio_seed_count", 5)))
+    out["radio_history_days"] = _num(data.get("radio_history_days"), .5, 365, base.get("radio_history_days", 10.5))
+    blocked_tracks = data.get("radio_blocked_tracks", base.get("radio_blocked_tracks", []))
+    out["radio_blocked_tracks"] = [{key: track[key] for key in ("id", "title", "artist", "remote", "url", "thumbnail")}
+                                   for track in _sanitize_play_history(blocked_tracks)]
+    def track_ids(value):
+        return list(dict.fromkeys(item for item in value[:10000] if isinstance(item, str) and _ID_RE.fullmatch(item))) if isinstance(value, list) else []
+    out["hidden_tracks"] = track_ids(data.get("hidden_tracks", base.get("hidden_tracks", [])))
+    hidden_playlists = data.get("hidden_playlist_tracks", base.get("hidden_playlist_tracks", {}))
+    out["hidden_playlist_tracks"] = {key[:300]: track_ids(ids) for key, ids in list(hidden_playlists.items())[:200]
+                                      if isinstance(key, str) and isinstance(ids, list)} if isinstance(hidden_playlists, dict) else {}
+    out["chat_enabled"] = _bool(data.get("chat_enabled"), base.get("chat_enabled", False))
+    out["chat_host_enabled"] = _bool(data.get("chat_host_enabled"), base.get("chat_host_enabled", False))
+    out["chat_host_port"] = int(_num(data.get("chat_host_port"), 1024, 65535, base.get("chat_host_port", 8786)))
+    out["chat_nickname"] = str(data.get("chat_nickname", base.get("chat_nickname", "")) or "").strip()[:32]
+    chat_url = str(data.get("chat_server_url", base.get("chat_server_url", "")) or "").strip()[:2000].rstrip("/")
+    parsed_chat_url = urlparse(chat_url)
+    out["chat_server_url"] = chat_url if (parsed_chat_url.scheme in ("http", "https") and parsed_chat_url.hostname and not parsed_chat_url.username and not parsed_chat_url.password and not parsed_chat_url.query and not parsed_chat_url.fragment) else ""
+    out["chat_token"] = str(data.get("chat_token", base.get("chat_token", "")) or "")[:500]
     raw_track_orders = data.get("playlist_track_order", base.get("playlist_track_order", {}))
     clean_track_orders = {}
     if isinstance(raw_track_orders, dict):
@@ -1092,7 +1207,10 @@ class SettingsStore:
 
     def update(self, patch: dict) -> dict:
         with self.lock:
-            self.data = sanitize_settings(merge_patch(self.data, patch), self.data)
+            merged = merge_patch(self.data, patch)
+            if "hidden_playlist_tracks" in patch:
+                merged["hidden_playlist_tracks"] = patch["hidden_playlist_tracks"]
+            self.data = sanitize_settings(merged, self.data)
             self._save()
             return json.loads(json.dumps(self.data))
 
@@ -1272,6 +1390,10 @@ def _valid_music_artist(value) -> str:
 def _public_result(info: dict) -> dict:
     thumbnails = info.get("thumbnails") if isinstance(info.get("thumbnails"), list) else []
     thumb = info.get("thumbnail") or next((t.get("url") for t in reversed(thumbnails) if isinstance(t, dict) and t.get("url")), "")
+    square = [t for t in thumbnails if isinstance(t, dict) and t.get("url")
+              and t.get("width") and t.get("width") == t.get("height")]
+    if square:
+        thumb = max(square, key=lambda t: int(t.get("width") or 0))["url"]
     artist = next((_valid_music_artist(info.get(key)) for key in
                    ("artist", "artists", "artist_name", "album_artist", "creator", "channel", "channel_title", "uploader")
                    if _valid_music_artist(info.get(key))), "")
@@ -1379,41 +1501,98 @@ def _probe_online_video_stream(url: str, headers: dict | None = None) -> bool:
         return False
 
 
-def _find_accessible_youtube_video(query: str, max_height: int = 480) -> tuple[str, str, str, dict]:
-    """Skip YouTube search hits whose signed video URLs already reject HTTP range requests."""
+def _youtube_clip_source(track_id: str, source_url: str = "") -> str:
+    parsed = urlparse(str(source_url or ""))
+    host = (parsed.hostname or "").lower().rstrip(".")
+    video_id = ""
+    if parsed.scheme == "https" and (host == "youtube.com" or host.endswith(".youtube.com") or host == "youtu.be"):
+        video_id = (parse_qs(parsed.query).get("v") or [""])[0]
+        if host == "youtu.be":
+            video_id = parsed.path.strip("/").split("/")[0]
+    if not video_id:
+        candidate = str(track_id).rsplit(":", 1)[-1]
+        if re.fullmatch(r"[A-Za-z0-9_-]{11}", candidate):
+            video_id = candidate
+    if not video_id:
+        state = globals().get("STATE")
+        if state is not None:
+            with state.library.lock:
+                track = state.library.tracks.get(track_id) or {}
+                match = re.search(r"\[([A-Za-z0-9_-]{11})\]$", Path(track.get("path") or "").stem)
+                if match:
+                    video_id = match.group(1)
+    return "https://www.youtube.com/watch?v=" + video_id if re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id) else ""
+
+
+def _is_audio_only_upload(info: dict) -> bool:
+    video_type = str(info.get("music_video_type") or info.get("musicVideoType") or "")
+    if video_type == "MUSIC_VIDEO_TYPE_ATV":
+        return True
+    channel = str(info.get("channel") or info.get("uploader") or "")
+    description = str(info.get("description") or "")
+    title = str(info.get("title") or "")
+    return bool(re.search(r"\s-\sTopic$", channel, re.I)
+                or re.search(r"auto-generated by youtube|provided to youtube by", description, re.I)
+                or re.search(r"\b(?:official audio|audio only|full album)\b|официальное аудио", title, re.I))
+
+
+def _find_accessible_youtube_video(query: str, max_height: int = 480, *, background: bool = False,
+                                   source_url: str = "", artist: str = "") -> tuple[str, str, str, dict]:
+    """Prefer an uploaded source video; search separately for album art/audio tracks."""
     ytdlp = _yt_dlp_module(allow_online_search=True)
-    search_options = {
-        "quiet": True, "no_warnings": True, "skip_download": True,
-        "extract_flat": "in_playlist", "noplaylist": True,
-        "socket_timeout": 12, "retries": 1, "playlistend": 3,
-    }
-    with ytdlp.YoutubeDL(search_options) as ydl:
-        search = ydl.extract_info("ytsearch3:" + query, download=False) or {}
-    entries = [item for item in (search.get("entries") or []) if isinstance(item, dict)][:3]
+    search_options = {"quiet": True, "no_warnings": True, "skip_download": True,
+                      "extract_flat": "in_playlist", "noplaylist": True,
+                      "socket_timeout": 12, "retries": 1, "playlistend": 5}
     video_format = (
         f"bestvideo[ext=mp4][height<={max_height}][vcodec^=avc1]/"
         f"bestvideo[ext=mp4][height<={max_height}]/best[ext=mp4][height<={max_height}]/"
         f"bestvideo[height<={max_height}]/best[height<={max_height}]"
     )
-    for entry in entries:
-        video_url = str(entry.get("webpage_url") or entry.get("url") or "")
-        video_id = str(entry.get("id") or "")
-        if video_id and not video_url.startswith(("https://", "http://")):
-            video_url = "https://www.youtube.com/watch?v=" + quote(video_id, safe="")
-        if not video_url:
-            continue
-        try:
+    if background:
+        video_format = f"bestvideo[ext=mp4][vcodec^=avc1][height<={max_height}][fps<=30][protocol=https]/best[ext=mp4][vcodec^=avc1][height<={max_height}][fps<=30][protocol=https]"
+
+    def resolve(video_url):
+        for client in (None, "android", "web_safari"):
             options = {"quiet": True, "no_warnings": True, "skip_download": True,
-                       "noplaylist": True, "format": video_format,
+                       "ignore_no_formats_error": True, "noplaylist": True, "format": video_format,
                        "socket_timeout": 12, "retries": 1}
-            with ytdlp.YoutubeDL(options) as ydl:
-                info = ydl.extract_info(video_url, download=False) or {}
-            stream = str(info.get("url") or "")
-            headers = info.get("http_headers") or {}
-            if stream and _probe_online_video_stream(stream, headers):
-                return video_url, str(info.get("format_id") or ""), stream, headers
-        except Exception as error:
-            logger.info("Не удалось проверить видео-кандидат %s: %s", video_id[:16], type(error).__name__)
+            if client:
+                options["extractor_args"] = {"youtube": {"player_client": [client]}}
+            try:
+                with ytdlp.YoutubeDL(options) as ydl:
+                    info = ydl.extract_info(video_url, download=False) or {}
+                if _is_audio_only_upload(info):
+                    logger.info("Клип: исходное видео является аудиотреком с обложкой; ищу отдельный клип")
+                    return "", "", "", {}
+                stream = str(info.get("url") or "")
+                headers = info.get("http_headers") or {}
+                if stream and _probe_online_video_stream(stream, headers):
+                    return video_url, str(info.get("format_id") or ""), stream, headers
+            except Exception as error:
+                logger.info("Клип: клиент %s не предоставил доступное видео (%s)", client or "default", type(error).__name__)
+        return "", "", "", {}
+
+    canonical_source = _youtube_clip_source("", source_url)
+    if canonical_source:
+        result = resolve(canonical_source)
+        if result[0]:
+            logger.info("Клип: использую видео исходного трека")
+            return result
+    with ytdlp.YoutubeDL(search_options) as ydl:
+        search = ydl.extract_info("ytsearch5:" + query, download=False) or {}
+    entries = [item for item in (search.get("entries") or []) if isinstance(item, dict)][:5]
+    artist_key = _music_match_text(artist)
+    entries.sort(key=lambda item: (
+        bool(artist_key and artist_key in _music_match_text(item.get("channel") or item.get("uploader") or "")),
+        bool(re.search(r"official.*video|music video|клип", str(item.get("title") or ""), re.I))), reverse=True)
+    for entry in entries:
+        video_url = _youtube_clip_source(str(entry.get("id") or ""), str(entry.get("webpage_url") or entry.get("url") or ""))
+        if not video_url or video_url == canonical_source or _is_audio_only_upload(entry):
+            continue
+        result = resolve(video_url)
+        if result[0]:
+            logger.info("Клип: подобрано отдельное видео, ID=%s", entry.get("id"))
+            return result
     return "", "", "", {}
 
 
@@ -2169,14 +2348,99 @@ def load_global_playlist(url: str) -> dict:
             "thumbnail": playlist_thumbnail, "url": url, "tracks": tracks, "track_count": len(tracks)}
 
 
+_RADIO_REMIX_RE = re.compile(
+    r"\b(remix(?:ed)?|bootleg|rework|mash[ -]?up|nightcore|speed[ -]?up|slowed|club mix|extended mix)\b|"
+    r"ремикс\w*|мэш[ -]?ап\w*|найткор\w*|ускоренн\w+ версия|замедленн\w+ версия", re.I)
+_RADIO_METADATA_CACHE = {}
+_RADIO_METADATA_LOCK = threading.Lock()
+
+
+def _prepare_radio_metadata(tracks: list) -> list:
+    """Resolve missing authors without requesting or preloading audio/video streams."""
+    def prepare(track):
+        if _valid_music_artist(track.get("artist")):
+            return track
+        url = str(track.get("url") or "")
+        if _remote_page_provider(url) not in ("youtube", "youtube_music"):
+            return track
+        with _RADIO_METADATA_LOCK:
+            cached = _RADIO_METADATA_CACHE.get(url)
+        if cached and cached[0] > time.monotonic():
+            metadata = cached[1]
+        else:
+            try:
+                metadata = _http_json("https://www.youtube.com/oembed?" + urlencode({"url": url, "format": "json"}), timeout=5)
+            except Exception:
+                metadata = {}
+            with _RADIO_METADATA_LOCK:
+                _RADIO_METADATA_CACHE[url] = (time.monotonic() + (3600 if metadata else 60), metadata)
+                while len(_RADIO_METADATA_CACHE) > 1000:
+                    _RADIO_METADATA_CACHE.pop(next(iter(_RADIO_METADATA_CACHE)))
+        author = _valid_music_artist(metadata.get("author_name"))
+        if author:
+            track["artist"] = author
+        return track
+    with ThreadPoolExecutor(max_workers=6, thread_name_prefix="radio-metadata") as pool:
+        return list(pool.map(prepare, tracks))
+_RADIO_AI_SLOP_RE = re.compile(
+    r"\b(ai[ -]?(?:generated|music|cover|song|voice)|artificial intelligence|suno|udio|riffusion|"
+    r"stable audio|voice clone|ai slop|generated by ai)\b|"
+    r"ии[ -]?(?:музык\w*|кавер\w*|песн\w*|сгенерирован\w*)|нейросет\w*|создан\w+ нейросет\w*", re.I)
+_RADIO_INSTRUMENTAL_RE = re.compile(
+    r"\b(?:instrumental(?:s)?|karaoke|backing[ -]track|minus[ -]one)\b|"
+    r"инструментал\w*|минусовк\w*|без\s+вокала", re.I)
+
+
+def _radio_track_identity(title: str, artist: str = "") -> tuple[str, str]:
+    title_key = _music_match_text(title)
+    artist_key = _music_match_text(artist)
+    if artist_key and title_key.startswith(artist_key + " "):
+        title_key = title_key[len(artist_key):].strip()
+    return title_key, artist_key
+
+
+def _radio_identity_is_duplicate(identity: tuple[str, str], previous: list[tuple[str, str]]) -> bool:
+    title_key, artist_key = identity
+    if not title_key:
+        return False
+    for old_title, old_artist in previous:
+        if not old_title:
+            continue
+        title_score = difflib.SequenceMatcher(None, title_key, old_title).ratio()
+        if title_key != old_title and (min(len(title_key), len(old_title)) < 8 or title_score < 0.94):
+            continue
+        if not artist_key or not old_artist or artist_key == old_artist:
+            return True
+        if difflib.SequenceMatcher(None, artist_key, old_artist).ratio() >= 0.84:
+            return True
+    return False
+
+
+def _radio_track_filtered(title: str, artist: str, *, exclude_remixes: bool, exclude_ai_slop: bool,
+                          exclude_instrumentals: bool = True, blocked_tracks=()) -> bool:
+    text = f"{title} {artist}"
+    return ((exclude_remixes and bool(_RADIO_REMIX_RE.search(text)))
+            or (exclude_ai_slop and bool(_RADIO_AI_SLOP_RE.search(text)))
+            or (exclude_instrumentals and bool(_RADIO_INSTRUMENTAL_RE.search(text)))
+            or _radio_identity_is_duplicate(_radio_track_identity(title, artist), blocked_tracks))
+
+
 def load_radio_queue(seed_url: str, title: str = "", artist: str = "", limit: int = 30,
-                     provider: str = "all") -> dict:
+                     provider: str = "all", exclude_remixes: bool | None = None,
+                     exclude_ai_slop: bool | None = None, exclude_instrumentals: bool | None = None) -> dict:
     """Resolve a YouTube-generated mix, falling back to a bounded music search."""
     _require_online_search_enabled()
-    limit = max(1, min(30, int(limit or 30)))
+    limit = max(1, min(100, int(limit or 30)))
     provider = str(provider or "all").strip().lower()
     if provider not in {"all", "youtube_music", "youtube", "soundcloud"}:
         provider = "all"
+    state = globals().get("STATE")
+    settings = state.settings.get() if state is not None else DEFAULT_SETTINGS
+    blocked_tracks = [_radio_track_identity(track.get("title", ""), track.get("artist", ""))
+                      for track in settings.get("radio_blocked_tracks", [])]
+    exclude_remixes = settings.get("radio_exclude_remixes", True) if exclude_remixes is None else bool(exclude_remixes)
+    exclude_ai_slop = settings.get("radio_exclude_ai_slop", True) if exclude_ai_slop is None else bool(exclude_ai_slop)
+    exclude_instrumentals = settings.get("radio_exclude_instrumentals", True) if exclude_instrumentals is None else bool(exclude_instrumentals)
     seed_url = str(seed_url or "").strip()[:2000]
     title, artist = str(title or "").strip()[:180], str(artist or "").strip()[:180]
     video_id = ""
@@ -2213,7 +2477,7 @@ def load_radio_queue(seed_url: str, title: str = "", artist: str = "", limit: in
 
     non_music = re.compile(r"\b(reaction|reacts|review|tutorial|gameplay|walkthrough|podcast|news|interview|vlog|shorts?|trailer|full movie|episode|documentary|обзор|реакци\w*|урок\w*|обучени\w*|прохождени\w*|подкаст\w*|новост\w*|интервью|влог\w*|трейлер|фильм|серия|документал\w*)\b", re.I)
     if provider in {"youtube_music", "soundcloud"}:
-        results, seen = [], set()
+        results, seen, song_keys = [], set(), []
         seed_title = _music_match_text(title)
         seed_artist = _music_match_text(artist)
         for query in queries:
@@ -2231,7 +2495,9 @@ def load_radio_queue(seed_url: str, title: str = "", artist: str = "", limit: in
                 track_id = str(track.get("id") or track.get("url") or "").strip()
                 track_title = str(track.get("title") or "").strip()
                 track_artist = str(track.get("artist") or "").strip()
-                if not track_id or not track_title or non_music.search(track_title):
+                if (not track_id or not track_title or non_music.search(track_title)
+                        or _radio_track_filtered(track_title, track_artist, exclude_remixes=exclude_remixes,
+                                                 exclude_ai_slop=exclude_ai_slop, exclude_instrumentals=exclude_instrumentals, blocked_tracks=blocked_tracks)):
                     continue
                 try:
                     duration = float(track.get("duration") or track.get("dur") or 0)
@@ -2239,9 +2505,10 @@ def load_radio_queue(seed_url: str, title: str = "", artist: str = "", limit: in
                     duration = 0
                 if duration > 900:
                     continue
-                title_key = _music_match_text(track_title)
-                artist_key = _music_match_text(track_artist)
-                if title_key == seed_title and (not seed_artist or not artist_key or artist_key == seed_artist):
+                identity = _radio_track_identity(track_title, track_artist)
+                if _radio_identity_is_duplicate(identity, song_keys):
+                    continue
+                if _radio_identity_is_duplicate(identity, [_radio_track_identity(seed_title, seed_artist)]):
                     continue
                 key = (provider, track_id.casefold())
                 if key in seen:
@@ -2251,8 +2518,11 @@ def load_radio_queue(seed_url: str, title: str = "", artist: str = "", limit: in
                               "source": "YouTube Music" if provider == "youtube_music" else "SoundCloud",
                               "preview_only": False})
                 results.append(track)
+                song_keys.append(identity)
                 if len(results) >= limit:
                     break
+        results = _prepare_radio_metadata(results)
+        results = [track for track in results if not _radio_track_filtered(track.get("title", ""), track.get("artist", ""), exclude_remixes=exclude_remixes, exclude_ai_slop=exclude_ai_slop, exclude_instrumentals=exclude_instrumentals, blocked_tracks=blocked_tracks)]
         return {"results": results, "seed": video_id, "requested": limit, "provider": provider}
 
     for query in queries:
@@ -2265,7 +2535,7 @@ def load_radio_queue(seed_url: str, title: str = "", artist: str = "", limit: in
         except Exception as error:
             logger.info("Поиск похожих треков для радио не удался: %s", type(error).__name__)
 
-    results, deferred, seen, artist_counts = [], [], {video_id} if video_id else set(), {}
+    results, deferred, seen, artist_counts, song_keys = [], [], {video_id} if video_id else set(), {}, []
     source_limit = max(1, (limit + 2) // 3) if provider == "all" else limit
     for item in entries:
         raw_id = str(item.get("id") or "")
@@ -2274,20 +2544,28 @@ def load_radio_queue(seed_url: str, title: str = "", artist: str = "", limit: in
         if not re.fullmatch(r"[A-Za-z0-9_-]{11}", str(raw_id)) or raw_id in seen:
             continue
         text = str(item.get("title") or "")
+        track = _public_result(item)
         try:
             duration = float(item.get("duration") or 0)
         except (TypeError, ValueError):
             duration = 0
-        if duration > 900 or non_music.search(text):
+        if (duration > 900 or non_music.search(text)
+                or _radio_track_filtered(text, str(track.get("artist") or ""), exclude_remixes=exclude_remixes,
+                                         exclude_ai_slop=exclude_ai_slop, exclude_instrumentals=exclude_instrumentals, blocked_tracks=blocked_tracks)):
             continue
-        track = _public_result(item)
         track.update({"id": raw_id, "url": f"https://www.youtube.com/watch?v={raw_id}",
                       "provider": "youtube", "source": "YouTube", "preview_only": False})
         if not track.get("thumbnail"):
             track["thumbnail"] = f"https://i.ytimg.com/vi/{raw_id}/hqdefault.jpg"
         if not track.get("artist") or track["artist"] in ("Неизвестный автор", "YouTube", "YouTube Music"):
             track["artist"] = artist or "YouTube Music"
+        identity = _radio_track_identity(track.get("title") or "", track.get("artist") or "")
+        if _radio_identity_is_duplicate(identity, song_keys):
+            continue
+        if _radio_identity_is_duplicate(identity, [_radio_track_identity(title, artist)]):
+            continue
         seen.add(raw_id)
+        song_keys.append(identity)
         artist_key = _music_match_text(track.get("artist") or "")
         if artist_key and artist_key not in {"youtube", "youtube music", "неизвестный автор"} and artist_counts.get(artist_key, 0) >= 4:
             deferred.append(track)
@@ -2302,8 +2580,6 @@ def load_radio_queue(seed_url: str, title: str = "", artist: str = "", limit: in
 
     if provider == "all" and queries and len(results) < limit:
         seed_title, seed_artist = _music_match_text(title), _music_match_text(artist)
-        song_keys = [(_music_match_text(item.get("title") or ""), _music_match_text(item.get("artist") or ""))
-                     for item in results]
         source_ids = {(str(item.get("provider") or "youtube"), str(item.get("id") or "").casefold())
                       for item in results}
         for source in ("youtube_music", "soundcloud"):
@@ -2320,7 +2596,9 @@ def load_radio_queue(seed_url: str, title: str = "", artist: str = "", limit: in
                 track_id = str(track.get("id") or track.get("url") or "").strip()
                 track_title = str(track.get("title") or "").strip()
                 track_artist = str(track.get("artist") or "").strip()
-                if not track_id or not track_title or not track.get("url") or non_music.search(track_title):
+                if (not track_id or not track_title or not track.get("url") or non_music.search(track_title)
+                        or _radio_track_filtered(track_title, track_artist, exclude_remixes=exclude_remixes,
+                                                 exclude_ai_slop=exclude_ai_slop, exclude_instrumentals=exclude_instrumentals, blocked_tracks=blocked_tracks)):
                     continue
                 try:
                     duration = float(track.get("duration") or track.get("dur") or 0)
@@ -2328,22 +2606,23 @@ def load_radio_queue(seed_url: str, title: str = "", artist: str = "", limit: in
                     duration = 0
                 if duration > 900:
                     continue
-                title_key, artist_key = _music_match_text(track_title), _music_match_text(track_artist)
-                if title_key == seed_title and (not seed_artist or not artist_key or artist_key == seed_artist):
+                identity = _radio_track_identity(track_title, track_artist)
+                if _radio_identity_is_duplicate(identity, [_radio_track_identity(seed_title, seed_artist)]):
                     continue
-                if any(title_key == old_title and (not artist_key or not old_artist or artist_key == old_artist)
-                       for old_title, old_artist in song_keys):
+                if _radio_identity_is_duplicate(identity, song_keys):
                     continue
                 key = (source, track_id.casefold())
                 if key in source_ids:
                     continue
                 source_ids.add(key)
-                song_keys.append((title_key, artist_key))
+                song_keys.append(identity)
                 track.update({"id": track_id, "provider": source,
                               "source": "YouTube Music" if source == "youtube_music" else "SoundCloud",
                               "preview_only": False})
                 results.append(track)
                 source_count += 1
+    results = _prepare_radio_metadata(results)
+    results = [track for track in results if not _radio_track_filtered(track.get("title", ""), track.get("artist", ""), exclude_remixes=exclude_remixes, exclude_ai_slop=exclude_ai_slop, exclude_instrumentals=exclude_instrumentals, blocked_tracks=blocked_tracks)]
     return {"results": results, "seed": video_id, "requested": limit, "provider": provider}
 
 
@@ -2605,7 +2884,7 @@ def _resolve_online_stream_uncached(url: str, provider: str = "") -> dict:
         artist = "YouTube Music" if provider == "youtube_music" else "YouTube"
     return {"stream_url": stream_url, "stream_type": "hls" if is_hls else "progressive", "duration": info.get("duration"),
             "title": str(info.get("title") or "Без названия"), "artist": str(artist),
-            "thumbnail": str(info.get("thumbnail") or public.get("thumbnail") or "")}
+            "thumbnail": str(public.get("thumbnail") or "")}
 
 
 def resolve_online_stream(url: str, provider: str = "") -> dict:
@@ -2877,6 +3156,10 @@ def _start_download_job(url: str, playlist: str, is_playlist: bool, destination_
             if include_clip and _ACTIVE_CLIPS_ENABLED:
                 clip_failures = 0
                 tracks = result.get("tracks") if isinstance(result, dict) else []
+                clip_errors = []
+                if not tracks:
+                    clip_failures = 1
+                    clip_errors.append("Не найден MP3, к которому нужно привязать клип.")
                 for track in tracks or []:
                     if job["cancel_event"].is_set():
                         break
@@ -2887,16 +3170,18 @@ def _start_download_job(url: str, playlist: str, is_playlist: bool, destination_
                         job["percent"] = 100
                     clip_job = _start_clip_download(str(track.get("id") or ""), title,
                                                     str(track.get("artist") or ""),
-                                                    cancel_event=job["cancel_event"])
+                                                    cancel_event=job["cancel_event"], source_url=url)
                     while clip_job.get("id") and clip_job.get("status") not in ("finished", "failed", "cancelled"):
                         if job["cancel_event"].wait(0.5):
                             break
                         clip_job = _clip_job_snapshot(clip_job["id"])
                     if clip_job.get("status") != "finished":
                         clip_failures += 1
+                        clip_errors.append(str(clip_job.get("error") or "Источник не отдал клип.")[:300])
                 if job["cancel_event"].is_set():
                     raise RuntimeError("Загрузка отменена")
                 result["clips_failed"] = clip_failures
+                result["clip_errors"] = clip_errors
             completed_successfully = True
             with DOWNLOAD_JOBS_LOCK:
                 job["status"] = "finished"
@@ -2941,7 +3226,7 @@ def _clip_path(track_id: str) -> Path:
     return CLIPS_DIR / f"{_clip_key(track_id)}.mp4"
 
 
-def resolve_background_clip(track_id: str, title: str, artist: str) -> dict:
+def resolve_background_clip(track_id: str, title: str, artist: str, source_url: str = "") -> dict:
     """Use a saved clip first, otherwise return a short-lived online video stream."""
     track_id = str(track_id or "")[:500]
     title = str(title or "").strip()[:240]
@@ -2956,7 +3241,9 @@ def resolve_background_clip(track_id: str, title: str, artist: str) -> dict:
     if _ACTIVE_PERFORMANCE_MODE not in ONLINE_MODES:
         return {"found": False, "url": "", "offline": True}
 
-    cache_key = (track_id, title.casefold(), artist.casefold())
+    source_url = _youtube_clip_source(track_id, source_url)
+    quality = int(STATE.settings.get().get("clip_video_quality", 1080))
+    cache_key = (track_id, title.casefold(), artist.casefold(), source_url, quality)
     now = time.monotonic()
     with ONLINE_CLIP_CACHE_LOCK:
         cached = ONLINE_CLIP_CACHE.get(cache_key)
@@ -2969,8 +3256,7 @@ def resolve_background_clip(track_id: str, title: str, artist: str) -> dict:
     result = {"found": False, "url": ""}
     ttl = 120.0
     try:
-        quality = int(STATE.settings.get().get("clip_video_quality", 1080))
-        video_url, format_id, stream, headers = _find_accessible_youtube_video(query, max_height=quality)
+        video_url, format_id, stream, headers = _find_accessible_youtube_video(query, max_height=quality, background=True, source_url=source_url, artist=artist)
         if video_url and format_id:
             proxy_url = _register_online_stream(stream, headers)
             if proxy_url:
@@ -2994,7 +3280,7 @@ def _clip_job_snapshot(job_id: str) -> dict:
         return {key: value for key, value in job.items() if key != "track_id"}
 
 
-def _start_clip_download(track_id: str, title: str, artist: str, cancel_event=None) -> dict:
+def _start_clip_download(track_id: str, title: str, artist: str, cancel_event=None, source_url: str = "") -> dict:
     _require_online_search_enabled()
     if not _ACTIVE_CLIPS_ENABLED:
         raise RuntimeError("Загрузка клипов выключена в настройках «Режимы».")
@@ -3026,11 +3312,14 @@ def _start_clip_download(track_id: str, title: str, artist: str, cancel_event=No
             logger_for_ytdlp = _DownloadLogger()
             query = " ".join(part for part in (artist, title, "official music video") if part)
             quality = int(STATE.settings.get().get("clip_video_quality", 1080))
-            video_url, format_id, _stream_url, _stream_headers = _find_accessible_youtube_video(query, max_height=quality)
+            video_url, format_id, _stream_url, _stream_headers = _find_accessible_youtube_video(query, max_height=quality, source_url=_youtube_clip_source(track_id, source_url), artist=artist)
             if not video_url or not format_id:
                 raise RuntimeError("Не удалось найти доступный видеопоток для клипа.")
             options = {
-                "format": format_id,
+                # Download the exact signed stream that passed the probe. Re-extracting
+                # the watch page can select a different client and return a 403 URL.
+                "format": "best",
+                "http_headers": _stream_headers,
                 "merge_output_format": "mp4",
                 "postprocessors": [{"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}],
                 "outtmpl": str(CLIPS_DIR / f"{_clip_key(track_id)}.%(ext)s"),
@@ -3054,7 +3343,7 @@ def _start_clip_download(track_id: str, title: str, artist: str, cancel_event=No
 
             options["progress_hooks"] = [progress]
             with ytdlp.YoutubeDL(options) as ydl:
-                result_code = ydl.download([video_url])
+                result_code = ydl.download([_stream_url])
             if not target.is_file() or not target.stat().st_size:
                 # yt-dlp may add a source ID to an output name for some extractors;
                 # normalize the first completed MP4 to our opaque track key.
@@ -3291,6 +3580,12 @@ def download_remote(url: str, playlist: str, is_playlist: bool = False, destinat
             raise RuntimeError(drm_message) from error
         raise
     created = [path for path in destination.glob("*.mp3") if path.name not in before]
+    completed_files = list(created)
+    if not is_playlist and not completed_files:
+        source_id = str((info.get("track") or {}).get("id") or "")
+        if source_id:
+            completed_files = [path for path in destination.glob("*.mp3")
+                               if path.stem.endswith(f"[{source_id}]")]
     downloaded_count = len(created)
     if not created and ydl_logger.drm_errors:
         raise RuntimeError(drm_message)
@@ -3321,7 +3616,7 @@ def download_remote(url: str, playlist: str, is_playlist: bool = False, destinat
         STATE.library.add_downloaded_files(created, destination, info.get("provider", ""))
     tracks = []
     if not is_playlist:
-        for path in created:
+        for path in completed_files:
             tag_title, tag_artist, _album, _duration, _embedded = read_tags(path)
             _number, filename_artist, filename_title = parse_filename(path.stem)
             tracks.append({"id": track_id_for(str(path)),
@@ -3451,6 +3746,15 @@ class Library:
             return data if isinstance(data, dict) else {}
         except (OSError, json.JSONDecodeError):
             return {}
+
+    def save_cache(self):
+        with self.lock:
+            temporary = CACHE_FILE.with_name(CACHE_FILE.name + ".tmp")
+            try:
+                temporary.write_text(json.dumps(self._cache, ensure_ascii=False), encoding="utf-8")
+                os.replace(temporary, CACHE_FILE)
+            except OSError as error:
+                logger.warning("Не смог сохранить кэш библиотеки: %s", error)
 
     def load_cached_snapshot(self):
         """Build the visible library from metadata cache without touching music files."""
@@ -3755,10 +4059,7 @@ class Library:
             self.version += 1
         if new_cache != self._cache:
             self._cache = new_cache
-            try:
-                CACHE_FILE.write_text(json.dumps(new_cache, ensure_ascii=False), encoding="utf-8")
-            except OSError as error:
-                logger.warning("Не смог сохранить кэш библиотеки: %s", error)
+            self.save_cache()
         if newly_added_downloads:
             record_download_completed()
         logger.info("Библиотека: %s треков, %.1f с", len(tracks), time.monotonic() - started)
@@ -3815,10 +4116,7 @@ class Library:
             self.version += 1
         for track, stat, title, artist, album, duration, embedded in added:
             self._cache[track["path"]] = [int(stat.st_mtime), stat.st_size, title, artist, album, duration, embedded]
-        try:
-            CACHE_FILE.write_text(json.dumps(self._cache, ensure_ascii=False), encoding="utf-8")
-        except OSError as error:
-            logger.warning("Не смог сохранить кэш библиотеки: %s", error)
+        self.save_cache()
         record_download_completed()
 
     def snapshot(self) -> dict:
@@ -4488,6 +4786,65 @@ def _find_ffmpeg_binary() -> str:
     raise RuntimeError("FFmpeg не найден. Положи ffmpeg.exe в папку ffmpeg\bin или установи imageio-ffmpeg.")
 
 
+def _hide_library_track(track_id: str, playlist_key: str = "") -> dict:
+    with STATE.library.lock:
+        track = STATE.library.tracks.get(track_id)
+        if not track:
+            raise ValueError("Трек не найден в библиотеке")
+        if playlist_key and track.get("pl") != playlist_key:
+            raise ValueError("Трек не принадлежит этому плейлисту")
+    settings = STATE.settings.get()
+    if playlist_key:
+        hidden = settings.get("hidden_playlist_tracks", {})
+        hidden[playlist_key] = list(dict.fromkeys(hidden.get(playlist_key, []) + [track_id]))
+        settings = STATE.settings.update({"hidden_playlist_tracks": hidden})
+    else:
+        settings = STATE.settings.update({"hidden_tracks": list(dict.fromkeys(settings.get("hidden_tracks", []) + [track_id]))})
+    return {"ok": True, "settings": settings}
+
+
+def _delete_library_track(track_id: str) -> dict:
+    """Delete only an indexed audio file under an explicitly configured source."""
+    if not _ID_RE.fullmatch(track_id):
+        raise ValueError("Некорректный идентификатор трека")
+    path = STATE.library.path_of(track_id)
+    if path is None:
+        raise ValueError("Трек не найден в библиотеке")
+    resolved = path.resolve()
+    roots = [Path(source["path"]).expanduser().resolve() for source in resolve_sources(STATE.settings.get()) if source.get("path")]
+    if path.is_symlink() or resolved.suffix.lower() not in AUDIO_EXTENSIONS or not any(resolved.is_relative_to(root) for root in roots):
+        raise ValueError("Удаление доступно только для аудиофайла в папке библиотеки")
+    resolved.unlink(missing_ok=True)
+    with STATE.library.lock:
+        track = STATE.library.tracks.pop(track_id, None)
+        STATE.library._cache.pop(str(path), None)
+        STATE.library.save_cache()
+        if track:
+            source_id = track.get("src")
+            STATE.library.source_counts[source_id] = max(0, STATE.library.source_counts.get(source_id, 0) - 1)
+            for playlist in STATE.library.playlists:
+                if playlist.get("key") == track.get("pl"):
+                    playlist["count"] = max(0, playlist.get("count", 0) - 1)
+            STATE.library.playlists = [item for item in STATE.library.playlists if item.get("count", 0)]
+        STATE.library.version += 1
+    current = STATE.settings.get()
+    STATE.settings.update({"favorites": [item for item in current["favorites"] if item != track_id],
+                           "hidden_tracks": [item for item in current.get("hidden_tracks", []) if item != track_id],
+                           "hidden_playlist_tracks": {key: [item for item in ids if item != track_id]
+                                                      for key, ids in current.get("hidden_playlist_tracks", {}).items()}})
+    with _CUSTOM_PLAYLISTS_LOCK:
+        playlists = _read_custom_playlists()
+        for playlist in playlists["items"]:
+            playlist["ids"] = [item for item in playlist["ids"] if item != track_id]
+        _write_custom_playlists(int(time.time() * 1000), playlists["items"])
+    try:
+        _clip_path(track_id).unlink(missing_ok=True)
+    except OSError:
+        logger.info("Не удалось удалить сохранённый клип удалённого трека")
+    STATE.library.scan_async(force=True)
+    return {"ok": True, "id": track_id}
+
+
 def _trim_local_track(track_id: str, start: float, end: float) -> dict:
     """Render a selected time range into a new MP3 without modifying the source."""
     if not isinstance(track_id, str) or not _ID_RE.fullmatch(track_id):
@@ -4891,8 +5248,21 @@ class Handler(BaseHTTPRequestHandler):
                                   "text/javascript; charset=utf-8", {"Cache-Control": "public, max-age=31536000, immutable"})
             except OSError:
                 return self._fail(404, "HLS support library not found")
+        if path in ("/chat.js", "/chat.css"):
+            try:
+                mime = "text/javascript" if path.endswith(".js") else "text/css"
+                return self._send(200, (WEB_DIR / path[1:]).read_bytes(), mime + "; charset=utf-8", {"Cache-Control": "no-cache"})
+            except OSError:
+                return self._fail(404, "Chat interface not found")
         if not self._token_ok(query):
             return self._fail(403, "bad token")
+        if path.startswith("/api/chat/"):
+            if _CHAT_SERVICE is None:
+                return self._json({"enabled": False, "hosting": False, "error": "Чат выключен"},
+                                  200 if path == "/api/chat/status" else 403)
+            chat_query = urlencode({key: values[-1] for key, values in query.items() if key != "t"})
+            status, payload = _CHAT_SERVICE.request("GET", path + ("?" + chat_query if chat_query else ""), None, session_token=self.headers.get("X-Chat-Session", ""))
+            return self._json(payload, status)
         if path.startswith("/api/online/stream/"):
             parts = path.strip("/").split("/")
             if len(parts) == 4 and parts[:3] == ["api", "online", "stream"]:
@@ -5111,6 +5481,11 @@ class Handler(BaseHTTPRequestHandler):
             return
 
     def _route_post(self, path: str, data: dict):
+        if path.startswith("/api/chat/"):
+            if _CHAT_SERVICE is None:
+                return self._json({"error": "Чат выключен"}, 403)
+            status, payload = _CHAT_SERVICE.request("POST", path, data, session_token=self.headers.get("X-Chat-Session", ""))
+            return self._json(payload, status)
         if path == "/api/update/download":
             try:
                 return self._json(_start_update_download())
@@ -5203,8 +5578,10 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 return self._json(load_radio_queue(str(data.get("url") or ""),
                                                    str(data.get("title") or ""),
-                                                   str(data.get("artist") or ""), 30,
-                                                   str(data.get("provider") or "all")))
+                                                   str(data.get("artist") or ""), int(STATE.settings.get().get("radio_recommendation_count", 30)),
+                                                   str(data.get("provider") or "all"),
+                                                   exclude_remixes=STATE.settings.get().get("radio_exclude_remixes", True),
+                                                   exclude_ai_slop=STATE.settings.get().get("radio_exclude_ai_slop", True)))
             except Exception as error:
                 logger.info("Не удалось собрать радио-очередь: %s", type(error).__name__)
                 return self._fail(400, str(error)[:300])
@@ -5243,7 +5620,8 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 return self._json(resolve_background_clip(str(data.get("id") or ""),
                                                           str(data.get("title") or ""),
-                                                          str(data.get("artist") or "")))
+                                                          str(data.get("artist") or ""),
+                                                          source_url=str(data.get("url") or "")))
             except Exception as error:
                 logger.info("Не удалось получить клип: %s", type(error).__name__)
                 return self._json({"found": False, "url": ""})
@@ -5251,7 +5629,8 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 return self._json(_start_clip_download(str(data.get("id") or ""),
                                                        str(data.get("title") or ""),
-                                                       str(data.get("artist") or "")))
+                                                       str(data.get("artist") or ""),
+                                                       source_url=str(data.get("url") or "")))
             except Exception as error:
                 return self._fail(400, str(error)[:300])
         if path in ("/api/download/search", "/api/download/inspect", "/api/download/start") and not downloads_enabled():
@@ -5349,6 +5728,15 @@ class Handler(BaseHTTPRequestHandler):
                 "Content-Disposition": disposition,
                 "Content-Length": str(len(data_bytes)),
             })
+        if path in ("/api/track/hide", "/api/track/delete"):
+            try:
+                track_id = str(data.get("id") or "")
+                return self._json(_hide_library_track(track_id, str(data.get("playlist_key") or ""))
+                                  if path.endswith("/hide") else _delete_library_track(track_id))
+            except ValueError as error:
+                return self._fail(400, str(error))
+            except OSError:
+                return self._fail(409, "Файл занят или недоступен. Останови трек и попробуй снова.")
         if path == "/api/track/trim":
             try:
                 return self._json(_trim_local_track(str(data.get("track_id") or ""), data.get("start"), data.get("end")))
@@ -5376,6 +5764,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/settings":
             before = STATE.settings.get()
             settings = STATE.settings.update(data)
+            if any(key.startswith("chat_") for key in data):
+                configure_chat(settings)
             if _MINI_PLAYER is not None:
                 _MINI_PLAYER.configure(settings)
             mode = settings.get("performance_mode", "eco_offline")
@@ -5708,6 +6098,7 @@ def shutdown_server(close_window=True):
     if first_call:
         logger.info("Плеер полностью закрывается")
         _arm_force_exit()
+        configure_chat({"chat_enabled": False})
         stop_global_hotkeys()
         try:
             STATE.library.stop_watching()
@@ -6298,7 +6689,11 @@ def run_native_window(url: str):
 
     window.events.before_show += on_before_show
     window.events.closing += on_closing
-    webview.start(debug=False)
+    # WebView's default InPrivate profile deliberately hides MediaSession metadata
+    # from Windows. Use this app's own persistent profile for system media controls.
+    profile_dir = PLAYER_DIR / "webview-profile"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    webview.start(debug=False, private_mode=False, storage_path=str(profile_dir))
     _NATIVE_WINDOW = None
     _NATIVE_HWND = None
     _NATIVE_IS_MAXIMIZED = False
@@ -6620,6 +7015,7 @@ def main():
     server.daemon_threads = True
     STATE.server = server
     STATE.port = port
+    configure_chat(settings)
     _start_mini_player()
     STATE.presence.configure(settings["discord"])
     global LAST_DOWNLOAD_COMPLETED
