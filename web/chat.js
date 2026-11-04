@@ -9,7 +9,7 @@
   const cfg = () => S.settings || {};
   const active = () => state.open && !document.hidden && cfg().chat_enabled === true;
   const status = message => {id("Status").textContent = message;};
-  const stop = () => {state.generation++;clearTimeout(state.timer);state.timer=0;for(const controller of state.controllers)controller.abort();state.controllers.clear();};
+  const stop = () => {state.generation++;state.connecting=null;clearTimeout(state.timer);state.timer=0;for(const controller of state.controllers)controller.abort();state.controllers.clear();};
   const resetSession = () => {state.token="";state.expires=0;state.signature="";state.cursor=0;state.messages.clear();};
 
   async function request(path, method="GET", body) {
@@ -30,8 +30,9 @@
     panel.innerHTML=`<div class="lf-chat-card"><header class="lf-chat-head"><div><h2>Чаты</h2><p>Музыка и переписка с друзьями</p></div><button class="iconbtn" id="lfChatClose" aria-label="Закрыть чат">✕</button></header>
       <details class="lf-chat-settings" open><summary>Подключение и ник</summary><form id="lfChatConfig" autocomplete="off"><label class="lf-chat-toggle"><input type="checkbox" id="lfChatEnabled">Включить чат</label>
       <div class="lf-chat-fields"><label>Твой ник<input class="text" id="lfChatNickname" minlength="2" maxlength="32" placeholder="Ник для переписки"></label><label>Режим<select class="select" id="lfChatMode"><option value="join">Подключиться к другу</option><option value="host">Создать чат на этом компьютере</option></select></label>
-      <label id="lfChatAddressRow">Адрес друга<input class="text" id="lfChatAddress" maxlength="2000" placeholder="http://IP:8786 или https://адрес"></label><label id="lfChatPortRow">Порт хоста<input class="text" id="lfChatPort" type="number" min="1024" max="65535" value="8786"></label>
-      <label>Код доступа<input class="text" id="lfChatCode" maxlength="128" placeholder="Код, который сообщил создатель чата"></label></div><div class="lf-chat-config-actions"><button class="btn primary" type="submit">Применить</button><span>Все комнаты общие; ник — имя для отображения.</span></div></form>
+      </div><div id="lfChatJoinPanel" class="lf-chat-invite"><label for="lfChatInviteInput">Добавить чат по коду</label><textarea class="text" id="lfChatInviteInput" rows="2" maxlength="4096" spellcheck="false" placeholder="Вставь приглашение LFCHAT1.… от друга"></textarea><div class="lf-chat-config-actions"><button class="btn primary" type="button" id="lfChatJoinInvite">Добавить чат</button><span>Введи ник выше. Адрес и код доступа подставятся автоматически.</span></div><p id="lfChatJoinNotice" class="lf-chat-hint" role="status"></p></div>
+      <div id="lfChatHostPanel" class="lf-chat-invite" hidden><div class="lf-chat-fields"><label id="lfChatPortRow">Порт хоста<input class="text" id="lfChatPort" type="number" min="1024" max="65535" value="8786"></label><label>Адрес для друга<select class="select" id="lfChatInviteAddress" aria-describedby="lfChatInviteHint"><option value="custom">Внешний / VPN-адрес…</option></select></label></div><label id="lfChatInviteCustomRow" class="lf-chat-invite-custom">Внешний / VPN-адрес<input class="text" id="lfChatInviteCustom" maxlength="2000" placeholder="http://доступный-IP:8786 или https://адрес"></label><p id="lfChatInviteHint" class="lf-chat-hint"></p><button class="btn" type="button" id="lfChatCopyInvite">Копировать приглашение</button><label id="lfChatInviteOutputRow" class="lf-chat-invite-result" hidden>Код приглашения<input class="text" id="lfChatInviteOutput" readonly spellcheck="false" aria-label="Код приглашения для копирования"></label><p id="lfChatInviteNotice" class="lf-chat-hint" role="status"></p><p class="lf-chat-hint">Приглашение содержит доступ к чату. Передавай его только тем, кого хочешь пригласить.</p></div>
+      <details class="lf-chat-manual" id="lfChatManual"><summary id="lfChatManualTitle">Подключиться вручную</summary><div class="lf-chat-fields"><label id="lfChatAddressRow">Адрес друга<input class="text" id="lfChatAddress" maxlength="2000" placeholder="http://IP:8786 или https://адрес"></label><label>Код доступа<input class="text" id="lfChatCode" maxlength="128" placeholder="Код доступа к хосту"></label></div></details><div class="lf-chat-config-actions"><button class="btn" type="submit" id="lfChatApply">Применить вручную</button><span id="lfChatApplyHint">Все комнаты общие; ник — имя для отображения.</span></div></form>
       <p id="lfChatHostHint" class="lf-chat-hint">Для разных сетей нужен доступный внешний адрес с открытым портом или общий VPN. Хост хранит переписку и должен оставаться включённым.</p><p id="lfChatHostInfo" class="lf-chat-hint"></p></details>
       <div class="lf-chat-toolbar"><select id="lfChatRoom" class="select" aria-label="Комната чата"><option value="general">Общий чат</option></select><button class="btn small" id="lfChatNewRoom">＋ Комната</button><span id="lfChatStatus" role="status">Чат выключен</span></div>
       <div class="lf-chat-messages" id="lfChatMessages" role="log" aria-live="polite"></div>
@@ -41,6 +42,10 @@
     id("Close").onclick=close;
     panel.addEventListener("click",event=>{if(event.target===panel)close();});
     id("Mode").onchange=syncMode;
+    id("InviteAddress").onchange=syncInviteAddress;
+    id("JoinInvite").onclick=joinInvitation;
+    id("CopyInvite").onclick=copyInvitation;
+    id("InviteOutput").onclick=()=>id("InviteOutput").select();
     id("Config").onsubmit=applyConfig;
     id("Enabled").onchange=async()=>{if(!id("Enabled").checked){stop();resetSession();await setSetting({chat_enabled:false},{immediate:true});status("Чат выключен: соединения и хост остановлены");} };
     id("Room").onchange=()=>{stop();state.room=id("Room").value;state.cursor=0;state.messages.clear();renderMessages();poll();};
@@ -55,20 +60,88 @@
 
   function syncMode() {
     const hosting=id("Mode").value==="host";
-    id("AddressRow").hidden=hosting;id("PortRow").hidden=!hosting;
-    id("HostHint").textContent=hosting?"Сообщи другу внешний адрес/VPN-адрес, порт и код. Для разных сетей требуется проброс TCP-порта на роутере или общий VPN. Плеер-хост должен оставаться включённым.":"Введи адрес и код создателя чата. Для разных сетей нужен внешний адрес с открытым портом или общий VPN.";
+    id("AddressRow").hidden=hosting;id("HostPanel").hidden=!hosting;id("JoinPanel").hidden=hosting;
+    id("ManualTitle").textContent=hosting?"Код доступа (дополнительно)":"Подключиться вручную";
+    id("Apply").textContent=hosting?"Создать / сохранить чат":"Применить вручную";
+    id("ApplyHint").textContent=hosting?"Включи чат, сохрани настройки, затем скопируй приглашение.":"Для подключения по приглашению достаточно кнопки «Добавить чат».";
+    id("HostHint").textContent=hosting?"Хост хранит переписку и должен оставаться включённым. Для разных сетей нужен доступный внешний адрес с пробросом TCP-порта или общий VPN.":"Друг создаёт чат и присылает приглашение. Для разных сетей хосту нужен доступный внешний адрес или общий VPN.";
+    syncInviteAddress();
+  }
+
+  function syncInviteAddress() {
+    const custom=id("InviteAddress").value==="custom";
+    id("InviteCustomRow").hidden=!custom;
+    id("InviteHint").textContent=custom?"Укажи адрес, доступный другу: общий VPN или внешний адрес с открытым портом. Код сам по себе не открывает доступ через роутер.":"Этот адрес работает в одной локальной сети. Для друга из другой сети выбери внешний / VPN-адрес.";
+  }
+
+  function fillConfig() {
+    const settings=cfg();id("Enabled").checked=settings.chat_enabled===true;id("Nickname").value=settings.chat_nickname||"";id("Mode").value=settings.chat_host_enabled?"host":"join";id("Port").value=settings.chat_host_port||8786;id("Address").value=settings.chat_server_url||"";id("Code").value=settings.chat_token||"";syncMode();
   }
 
   async function open() {
     createPanel();state.open=true;panel.classList.remove("hidden");
-    const settings=cfg();id("Enabled").checked=settings.chat_enabled===true;id("Nickname").value=settings.chat_nickname||"";id("Mode").value=settings.chat_host_enabled?"host":"join";id("Port").value=settings.chat_host_port||8786;id("Address").value=settings.chat_server_url||"";id("Code").value=settings.chat_token||"";syncMode();
+    id("JoinInvite").disabled=false;id("CopyInvite").disabled=false;fillConfig();
     if(active()){status("Подключаюсь…");await poll();}else status("Введи ник и выбери, создать чат или подключиться к другу");
   }
 
-  function close() {state.open=false;stop();panel.classList.add("hidden");}
+  function close() {state.open=false;stop();panel.classList.add("hidden");id("InviteOutput").value="";id("InviteOutputRow").hidden=true;id("InviteNotice").textContent="";id("JoinNotice").textContent="";}
+
+  async function joinInvitation() {
+    if(id("JoinInvite").disabled)return;
+    const nickname=id("Nickname").value.trim(),invite_code=id("InviteInput").value.trim();
+    if(nickname.length<2||nickname.length>32){id("JoinNotice").textContent="Введи ник от 2 до 32 символов выше";id("Nickname").focus();return;}
+    if(!invite_code){id("JoinNotice").textContent="Вставь код приглашения, который прислал друг";id("InviteInput").focus();return;}
+    if(cfg().chat_enabled&&cfg().chat_host_enabled){
+      const before=state.generation;id("JoinInvite").disabled=true;
+      const accepted=await cutePrompt({title:"Перейти в чат друга?",subtitle:"Твой хост будет выключен, и подключённые к нему друзья потеряют связь с этим чатом.",confirmText:"Перейти в чат друга",confirmOnly:true});
+      id("JoinInvite").disabled=false;
+      if(!accepted||before!==state.generation||!state.open)return;
+    }
+    stop();resetSession();state.room="general";renderMessages();
+    const generation=state.generation;id("JoinInvite").disabled=true;id("JoinNotice").textContent="Добавляю чат…";
+    try {
+      const result=await api("/api/chat/invite/join","POST",{invite_code,nickname});
+      S.settings={...cfg(),...result.settings};
+      if(generation!==state.generation||!state.open)return;
+      fillConfig();id("InviteInput").value="";id("JoinNotice").textContent="Чат добавлен";
+      if(active())await poll();
+    } catch(error) {if(generation===state.generation&&state.open){id("JoinNotice").textContent=error.message;if(active())await poll();}}
+    finally {if(generation===state.generation)id("JoinInvite").disabled=false;}
+  }
+
+  async function copyInvitation() {
+    if(id("CopyInvite").disabled)return;
+    if(!cfg().chat_enabled||!cfg().chat_host_enabled){id("InviteNotice").textContent="Сначала включи чат и нажми «Создать / сохранить чат»";return;}
+    const url=id("InviteAddress").value==="custom"?id("InviteCustom").value.trim():id("InviteAddress").value;
+    if(!url){id("InviteNotice").textContent="Укажи адрес хоста, доступный другу";return;}
+    const generation=state.generation;id("CopyInvite").disabled=true;id("InviteNotice").textContent="Создаю приглашение…";
+    try {
+      const result=await api("/api/chat/invite/create","POST",{url});
+      if(generation!==state.generation||!state.open)return;
+      id("InviteOutput").value=result.invite_code;id("InviteOutputRow").hidden=false;
+      try {
+        if(!navigator.clipboard?.writeText)throw new Error("clipboard unavailable");
+        await navigator.clipboard.writeText(result.invite_code);
+        if(generation===state.generation&&state.open)id("InviteNotice").textContent="Приглашение скопировано. Отправь его другу.";
+      } catch(_) {
+        if(generation!==state.generation||!state.open)return;
+        id("InviteNotice").textContent="Выдели и скопируй код ниже: Ctrl+C. Затем отправь его другу.";
+        id("InviteOutput").focus();id("InviteOutput").select();
+      }
+    } catch(error) {if(generation===state.generation&&state.open)id("InviteNotice").textContent=error.message;}
+    finally {if(generation===state.generation)id("CopyInvite").disabled=false;}
+  }
+
+  function setHostAddresses(server) {
+    if(!server.hosting)return;
+    const selected=id("InviteAddress").value,urls=(server.lan_addresses||[]).map(address=>"http://"+address+":"+server.port);
+    const options=urls.map(url=>{const option=document.createElement("option");option.value=url;option.textContent=url+" · локальная сеть";return option;});
+    const custom=document.createElement("option");custom.value="custom";custom.textContent="Внешний / VPN-адрес…";options.push(custom);id("InviteAddress").replaceChildren(...options);
+    id("InviteAddress").value=urls.includes(selected)||selected==="custom"&&id("InviteCustom").value.trim()?selected:(urls[0]||"custom");syncInviteAddress();
+  }
 
   async function applyConfig(event) {
-    event.preventDefault();stop();resetSession();
+    event.preventDefault();stop();resetSession();const generation=state.generation;
     const enabled=id("Enabled").checked,hosting=id("Mode").value==="host",nickname=id("Nickname").value.trim(),port=Number(id("Port").value);
     if(enabled&&nickname.length<2){status("Введи ник от 2 до 32 символов");return;}
     if(enabled&&hosting&&(!Number.isInteger(port)||port<1024||port>65535)){status("Выбери порт от 1024 до 65535");return;}
@@ -77,6 +150,7 @@
     let code=id("Code").value.trim();if(enabled&&hosting&&!code){code=uuid().replace(/-/g,"").slice(0,16);id("Code").value=code;}
     status("Сохраняю…");
     const saved=await setSetting({chat_enabled:enabled,chat_host_enabled:hosting,chat_host_port:Number.isInteger(port)?port:8786,chat_nickname:nickname,chat_server_url:address,chat_token:code},{immediate:true});
+    if(generation!==state.generation||!state.open)return;
     if(!saved){status("Не удалось сохранить настройки чата");return;}
     if(!enabled){status("Чат выключен: соединения и хост остановлены");return;}
     await poll();
@@ -89,13 +163,17 @@
   }
 
   async function connectSession() {
+    const generation=state.generation;
     const settings=cfg(),signature=JSON.stringify([settings.chat_nickname,settings.chat_server_url,settings.chat_host_enabled,settings.chat_host_port,settings.chat_token]);
     if(state.token&&state.signature===signature&&state.expires>Date.now()/1000+30)return;
     resetSession();state.signature=signature;
     const server=await request("/api/chat/status");
+    if(generation!==state.generation||!active())return;
     if(server.error)throw new Error(server.error);
+    setHostAddresses(server);
     id("HostInfo").textContent=server.hosting?"Хост запущен. Адреса этого компьютера: "+(server.lan_addresses||[]).map(address=>"http://"+address+":"+server.port).join(", ")+". Для друга из другой сети укажи внешний/VPN-адрес.":"";
     const session=await request("/api/chat/session","POST",{nickname:settings.chat_nickname||"",client_id:clientId()});
+    if(generation!==state.generation||!active())return;
     state.token=session.token;state.expires=Number(session.expires_at)||0;
     setRooms(session.rooms||[{id:"general",name:"Общий чат"}]);
   }
@@ -108,14 +186,18 @@
 
   async function newRoom() {
     if(!active()){status("Сначала подключись к чату");return;}
+    const generation=state.generation;
     const name=await cutePrompt({title:"Новая комната",subtitle:"Комната будет видна всем участникам этого хоста",placeholder:"Название комнаты",confirmText:"Создать"});
-    if(!name)return;
+    if(!name||generation!==state.generation||!active())return;
     try {
       await connect();
+      if(generation!==state.generation||!active())return;
       const created=await request("/api/chat/rooms","POST",{name:String(name).trim().slice(0,48)});
+      if(generation!==state.generation||!active())return;
       const rooms=await request("/api/chat/rooms");
+      if(generation!==state.generation||!active())return;
       stop();state.room=created.room.id;state.cursor=0;state.messages.clear();setRooms(rooms.rooms||[]);renderMessages();poll();
-    }catch(error){status(error.message);}
+    }catch(error){if(generation===state.generation&&active())status(error.message);}
   }
 
   async function poll() {
@@ -158,8 +240,8 @@
     if(id("Send").disabled)return;
     if(!active()){status("Сначала включи чат и подключись");return;}
     const text=id("Message").value.trim();if(kind==="text"&&!text)return;
-    id("Send").disabled=true;
-    try {await connect();const result=await request("/api/chat/messages","POST",{room:state.room,text,kind,attachment,nonce:uuid()});state.messages.set(result.message.id,result.message);id("Message").value="";renderMessages();await poll();}catch(error){status(error.message);}finally{id("Send").disabled=false;}
+    const generation=state.generation;id("Send").disabled=true;
+    try {await connect();if(generation!==state.generation||!active())return;const result=await request("/api/chat/messages","POST",{room:state.room,text,kind,attachment,nonce:uuid()});if(generation!==state.generation||!active())return;state.messages.set(result.message.id,result.message);id("Message").value="";renderMessages();await poll();}catch(error){if(generation===state.generation&&active())status(error.message);}finally{id("Send").disabled=false;}
   }
 
   async function shareTrack() {

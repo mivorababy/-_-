@@ -1,5 +1,8 @@
 """Optional user-hosted chat lifecycle and localhost API relay for the desktop player."""
+import base64
+import binascii
 import json
+import re
 import socket
 import sqlite3
 import threading
@@ -17,20 +20,79 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def validate_server_url(value):
-    value = str(value or "").strip().rstrip("/")
+    value = str(value or "").strip()
     if not value:
         return ""
-    parsed = urlparse(value)
-    if (parsed.scheme not in ("http", "https") or not parsed.hostname
-            or parsed.username or parsed.password or parsed.path not in ("", "/")
-            or parsed.query or parsed.fragment):
+    if len(value) > 2000 or any(ch.isspace() or not 32 <= ord(ch) <= 126 or ch == "\\" for ch in value):
+        raise ValueError("Некорректный адрес сервера")
+    try:
+        parsed = urlparse(value)
+        hostname = parsed.hostname
+    except ValueError:
+        raise ValueError("Некорректный адрес сервера") from None
+    if (parsed.scheme not in ("http", "https") or not hostname
+            or parsed.username is not None or parsed.password is not None or parsed.path not in ("", "/")
+            or "?" in value or "#" in value or parsed.netloc.endswith(":")):
         raise ValueError("Укажи адрес сервера вида http://IP:8786 или https://chat.example.com")
     try:
         if parsed.port is not None and not 1 <= parsed.port <= 65535:
             raise ValueError
     except ValueError:
         raise ValueError("Некорректный порт сервера") from None
-    return value
+    return value.rstrip("/")
+
+
+def validate_access_code(key, *, required=True):
+    # Authorization headers carry this key directly; Unicode/control characters
+    # cannot be represented consistently by desktop and Android HTTP clients.
+    if (not isinstance(key, str) or len(key) > 128 or (required and not key)
+            or any(not 32 <= ord(ch) <= 126 for ch in key)):
+        raise ValueError("Ключ чата: 1–128 латинских букв, цифр или знаков ASCII")
+    return key
+
+
+def _invite_values(url, key):
+    if not isinstance(url, str) or not url or url != url.strip():
+        raise ValueError("В приглашении отсутствует адрес чата")
+    url = validate_server_url(url)
+    return {"server_url": url, "access_code": validate_access_code(key)}
+
+
+def encode_invite(url, key):
+    values = _invite_values(url, key)
+    raw = json.dumps({"v": 1, "url": values["server_url"], "key": values["access_code"]},
+                     ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return "LFCHAT1." + base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def decode_invite(code):
+    """Decode locally, without opening a socket, resolving a host or enabling chat."""
+    if not isinstance(code, str) or len(code) > 4096:
+        raise ValueError("Некорректный код приглашения")
+    code = code.strip()
+    if not code.startswith("LFCHAT1."):
+        raise ValueError("Нужен полный код приглашения LFCHAT1.…")
+    encoded = code[8:]
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", encoded) or len(encoded) % 4 == 1:
+        raise ValueError("Код приглашения повреждён")
+
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Код приглашения повреждён")
+            result[key] = value
+        return result
+
+    try:
+        raw = base64.b64decode(encoded + "=" * (-len(encoded) % 4), altchars=b"-_", validate=True)
+        data = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object)
+    except (ValueError, UnicodeError, binascii.Error):
+        raise ValueError("Код приглашения повреждён") from None
+    if (not isinstance(data, dict) or set(data) != {"v", "url", "key"}
+            or type(data["v"]) is not int or data["v"] != 1):
+        raise ValueError("Версия приглашения не поддерживается")
+    return _invite_values(data["url"], data["key"])
 
 
 class ChatService:
@@ -126,7 +188,7 @@ class ChatService:
             if not base:
                 return 400, {"error": "Укажи адрес компьютера, который создал чат"}
         token = str(settings.get("chat_token") or "") if parsed_path.path == "/api/chat/session" else str(session_token or "")
-        if len(token) > 512 or "\r" in token or "\n" in token:
+        if len(token) > 512 or any(not 32 <= ord(ch) <= 126 for ch in token):
             return 400, {"error": "Некорректный ключ чата"}
         headers = {"Accept": "application/json", "Authorization": "Bearer " + token}
         body = None

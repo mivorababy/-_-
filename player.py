@@ -37,7 +37,7 @@ from mini_player import FloatingMiniPlayer
 
 logger = logging.getLogger("player")
 
-VERSION = "1.31-last-frequency"
+VERSION = "1.32-last-frequency"
 MAX_LAYERS = 8  # сколько треков можно играть одновременно в режиме «мульти-треки»
 APP_ID = "last-frequency"
 DEFAULT_PORT = 8775
@@ -1538,11 +1538,11 @@ def _is_audio_only_upload(info: dict) -> bool:
 
 def _find_accessible_youtube_video(query: str, max_height: int = 480, *, background: bool = False,
                                    source_url: str = "", artist: str = "") -> tuple[str, str, str, dict]:
-    """Prefer an uploaded source video; search separately for album art/audio tracks."""
+    """Use only the track's original video; static artwork never triggers a search."""
+    canonical_source = _youtube_clip_source("", source_url)
+    if not canonical_source:
+        return "", "", "", {}
     ytdlp = _yt_dlp_module(allow_online_search=True)
-    search_options = {"quiet": True, "no_warnings": True, "skip_download": True,
-                      "extract_flat": "in_playlist", "noplaylist": True,
-                      "socket_timeout": 12, "retries": 1, "playlistend": 5}
     video_format = (
         f"bestvideo[ext=mp4][height<={max_height}][vcodec^=avc1]/"
         f"bestvideo[ext=mp4][height<={max_height}]/best[ext=mp4][height<={max_height}]/"
@@ -1562,7 +1562,7 @@ def _find_accessible_youtube_video(query: str, max_height: int = 480, *, backgro
                 with ytdlp.YoutubeDL(options) as ydl:
                     info = ydl.extract_info(video_url, download=False) or {}
                 if _is_audio_only_upload(info):
-                    logger.info("Клип: исходное видео является аудиотреком с обложкой; ищу отдельный клип")
+                    logger.info("Клип: исходный трек содержит обложку; отдельный клип не ищется")
                     return "", "", "", {}
                 stream = str(info.get("url") or "")
                 headers = info.get("http_headers") or {}
@@ -1572,28 +1572,10 @@ def _find_accessible_youtube_video(query: str, max_height: int = 480, *, backgro
                 logger.info("Клип: клиент %s не предоставил доступное видео (%s)", client or "default", type(error).__name__)
         return "", "", "", {}
 
-    canonical_source = _youtube_clip_source("", source_url)
-    if canonical_source:
-        result = resolve(canonical_source)
-        if result[0]:
-            logger.info("Клип: использую видео исходного трека")
-            return result
-    with ytdlp.YoutubeDL(search_options) as ydl:
-        search = ydl.extract_info("ytsearch5:" + query, download=False) or {}
-    entries = [item for item in (search.get("entries") or []) if isinstance(item, dict)][:5]
-    artist_key = _music_match_text(artist)
-    entries.sort(key=lambda item: (
-        bool(artist_key and artist_key in _music_match_text(item.get("channel") or item.get("uploader") or "")),
-        bool(re.search(r"official.*video|music video|клип", str(item.get("title") or ""), re.I))), reverse=True)
-    for entry in entries:
-        video_url = _youtube_clip_source(str(entry.get("id") or ""), str(entry.get("webpage_url") or entry.get("url") or ""))
-        if not video_url or video_url == canonical_source or _is_audio_only_upload(entry):
-            continue
-        result = resolve(video_url)
-        if result[0]:
-            logger.info("Клип: подобрано отдельное видео, ID=%s", entry.get("id"))
-            return result
-    return "", "", "", {}
+    result = resolve(canonical_source)
+    if result[0]:
+        logger.info("Клип: использую видео исходного трека")
+    return result
 
 
 def _register_online_stream(url: str, headers: dict | None = None, *, is_hls: bool = False) -> str:
@@ -3314,7 +3296,7 @@ def _start_clip_download(track_id: str, title: str, artist: str, cancel_event=No
             quality = int(STATE.settings.get().get("clip_video_quality", 1080))
             video_url, format_id, _stream_url, _stream_headers = _find_accessible_youtube_video(query, max_height=quality, source_url=_youtube_clip_source(track_id, source_url), artist=artist)
             if not video_url or not format_id:
-                raise RuntimeError("Не удалось найти доступный видеопоток для клипа.")
+                raise RuntimeError("В исходном треке нет доступного видео. Для треков с обложкой поиск отдельного клипа отключён.")
             options = {
                 # Download the exact signed stream that passed the probe. Re-extracting
                 # the watch page can select a different client and return a 403 URL.
@@ -4251,18 +4233,28 @@ class CoverHost:
             return False
 
     @staticmethod
-    def _prepare(data: bytes, mime: str):
-        """Уменьшает обложку до 512 px JPEG (нужен Pillow). Без Pillow берём файл как есть, если он небольшой."""
+    def _prepare(data: bytes, mime: str, *, youtube_thumbnail: bool = False):
+        """Prepare a square cover; YouTube's 4:3 previews include 16:9 letterboxing."""
         try:
-            from PIL import Image
+            from PIL import Image, ImageOps
         except ImportError:
             Image = None
         if Image is not None:
             try:
                 image = Image.open(io.BytesIO(data))
                 image.load()
+                image = ImageOps.exif_transpose(image)
                 if image.mode != "RGB":
                     image = image.convert("RGB")
+                width, height = image.size
+                if youtube_thumbnail and 1.3 < width / max(1, height) < 1.4:
+                    content_height = min(height, round(width * 9 / 16))
+                    top = (height - content_height) // 2
+                    image = image.crop((0, top, width, top + content_height))
+                width, height = image.size
+                side = min(width, height)
+                left, top = (width - side) // 2, (height - side) // 2
+                image = image.crop((left, top, left + side, top + side))
                 image.thumbnail((512, 512))
                 buffer = io.BytesIO()
                 image.save(buffer, "JPEG", quality=88)
@@ -4416,7 +4408,8 @@ class CoverHost:
             return None
         if not data or len(data) > 5_000_000:
             return NO_COVER
-        data, mime = self._prepare(data, mime)
+        youtube_thumbnail = (host == "ytimg.com" or host.endswith(".ytimg.com")) and parsed.path.startswith(("/vi/", "/vi_webp/"))
+        data, mime = self._prepare(data, mime, youtube_thumbnail=youtube_thumbnail)
         if not data:
             return NO_COVER
         key = hashlib.sha1(data).hexdigest()
@@ -4635,10 +4628,9 @@ class DiscordPresence:
         artist = str(np.get("artist") or "Неизвестный исполнитель")[:120]
         source = str(np.get("source") or "").strip()[:36]
         playing = bool(np.get("playing"))
-        # Rich Presence exposes two custom text fields: details and state.
-        # Keep the title on its own row, then show artist and source together.
+        # The provider is shown separately in the album/source field.
         details = title[:120]
-        state_text = " · ".join(value for value in (artist, source) if value)[:120]
+        state_text = artist
         if not playing:
             state_text = ("⏸ " + state_text)[:120]
         activity = {"details": details + "\u200b" if len(details) < 2 else details,
@@ -4888,7 +4880,8 @@ def _trim_local_track(track_id: str, start: float, end: float) -> dict:
                         "-id3v2_version", "3"])
     else:
         command.append("-vn")
-    command.extend(["-map_metadata", "0", "-codec:a", "libmp3lame", "-q:a", "2", str(output)])
+    command.extend(["-map_metadata", "0", "-metadata", "LAST_FREQUENCY_SOURCE_ID=" + track_id,
+                    "-codec:a", "libmp3lame", "-q:a", "2", str(output)])
     creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=600,
@@ -4908,6 +4901,52 @@ def _trim_local_track(track_id: str, start: float, end: float) -> dict:
     return {"ok": True, "filename": output.name, "path": str(output), "duration": end-start}
 
 
+def _edited_source_track_id(path: Path) -> str:
+    """New cuts retain provenance even if their title or filename is edited later."""
+    try:
+        from mutagen.id3 import ID3
+        frame = ID3(path).get("TXXX:LAST_FREQUENCY_SOURCE_ID")
+        return str(frame.text[0]) if frame and frame.text else ""
+    except Exception:
+        return ""
+
+
+def _select_edited_replacement(source_track: dict, candidates: list, original_id: str = "") -> dict:
+    """Resolve one original; a duplicate name must never replace an arbitrary file."""
+    import unicodedata
+
+    def name(value):
+        value = unicodedata.normalize("NFKC", str(value or ""))
+        value = re.sub(r"\s+-\s+cut\s+\d{10,}$", "", value, flags=re.I)
+        value = re.sub(r"\s+[—-]\s+фрагмент(?:\s+[0-9a-f]{8})?$", "", value, flags=re.I)
+        return " ".join(value.casefold().split())
+
+    def artist(track):
+        value = name(track.get("artist"))
+        return "" if value in ("неизвестный автор", "неизвестный исполнитель", "unknown artist", "unknown") else value
+
+    originals = [track for track in candidates if original_id and track.get("id") == original_id]
+    if len(originals) == 1:
+        return originals[0]
+    title = name(source_track.get("title"))
+    matches = [track for track in candidates if title and name(track.get("title")) == title]
+    source_name = name(Path(source_track.get("path") or "").stem)
+    if not matches and (not title or title == source_name):
+        # Untagged cuts use a shortened, filename-safe version of the source name.
+        matches = [track for track in candidates if source_name and name(
+            re.sub(r"[^0-9A-Za-zА-Яа-я _.-]+", "_", Path(track.get("path") or "").stem).strip(" ._")[:90]
+        ) == source_name]
+    source_artist = artist(source_track)
+    if source_artist:
+        exact = [track for track in matches if artist(track) == source_artist]
+        matches = exact or [track for track in matches if not artist(track)]
+    if not matches:
+        raise ValueError("В выбранном плейлисте нет исходного трека с таким названием. Файлы не изменены.")
+    if len(matches) != 1:
+        raise ValueError("В плейлисте несколько треков с таким названием и автором. Уточни их названия и повтори замену; файлы не изменены.")
+    return matches[0]
+
+
 def _distribute_edited_track(track_id: str, target_playlist_key: str, mode: str = "move",
                              replace_track_id: str = "") -> dict:
     """Move an Edited track into a local folder playlist, optionally replacing one track."""
@@ -4917,9 +4956,10 @@ def _distribute_edited_track(track_id: str, target_playlist_key: str, mode: str 
         playlist_track = next((track for track in STATE.library.tracks.values()
                                if track.get("pl") == target_playlist_key), None)
         source_path = Path(source_track["path"]).resolve() if source_track else None
-        target_path = Path(target_track["path"]).resolve() if target_track else None
         playlist_path = Path(playlist_track["path"]).resolve().parent if playlist_track else None
         target_name = str(playlist_track.get("playlist") or "") if playlist_track else ""
+        candidates = [dict(track) for track in STATE.library.tracks.values()
+                      if track.get("pl") == target_playlist_key and track.get("id") != track_id]
 
     if source_path is None or not source_path.is_file():
         raise ValueError("Трек из Edited не найден. Обнови библиотеку и попробуй снова.")
@@ -4964,6 +5004,9 @@ def _distribute_edited_track(track_id: str, target_playlist_key: str, mode: str 
         STATE.library.scan_async(force=True)
         return {"ok": True, "action": mode, "filename": destination.name, "playlist": target_name}
 
+    if target_track is None and not replace_track_id:
+        target_track = _select_edited_replacement(source_track, candidates, _edited_source_track_id(source_path))
+    target_path = Path(target_track["path"]).resolve() if target_track else None
     if target_track is None or target_track.get("pl") != target_playlist_key or target_path is None or not target_path.is_file():
         raise ValueError("Трек для замены не найден в выбранном плейлисте.")
     if target_path == source_path:
@@ -5481,6 +5524,30 @@ class Handler(BaseHTTPRequestHandler):
             return
 
     def _route_post(self, path: str, data: dict):
+        if path in ("/api/chat/invite/parse", "/api/chat/invite/join", "/api/chat/invite/create"):
+            from chat_service import decode_invite, encode_invite
+            try:
+                if path == "/api/chat/invite/create":
+                    if _CHAT_SERVICE is None or not _CHAT_SERVICE.status()["hosting"]:
+                        return self._json({"error": "Сначала создай и включи чат на этом компьютере"}, 409)
+                    settings = STATE.settings.get()
+                    code = encode_invite(data.get("url"), settings.get("chat_token"))
+                    return self._json({"invite_code": code, "url": decode_invite(code)["server_url"]})
+                invite = decode_invite(data.get("invite_code"))
+                if path == "/api/chat/invite/parse":
+                    return self._json(invite)
+                from chat_server import clean_text
+                nickname = clean_text(data.get("nickname"), 32, required=True)
+                if len(nickname) < 2:
+                    raise ValueError("Ник должен содержать от 2 до 32 символов")
+                settings = STATE.settings.update({"chat_enabled": True, "chat_host_enabled": False,
+                                                  "chat_nickname": nickname,
+                                                  "chat_server_url": invite["server_url"],
+                                                  "chat_token": invite["access_code"]})
+                configure_chat(settings)
+                return self._json({"settings": settings})
+            except ValueError as error:
+                return self._json({"error": str(error)}, 400)
         if path.startswith("/api/chat/"):
             if _CHAT_SERVICE is None:
                 return self._json({"error": "Чат выключен"}, 403)
@@ -5762,6 +5829,12 @@ class Handler(BaseHTTPRequestHandler):
                 logger.exception("Не удалось распределить трек из Edited")
                 return self._fail(500, str(error)[:300])
         if path == "/api/settings":
+            if "chat_token" in data:
+                from chat_service import validate_access_code
+                try:
+                    validate_access_code(data["chat_token"], required=False)
+                except ValueError as error:
+                    return self._json({"error": str(error)}, 400)
             before = STATE.settings.get()
             settings = STATE.settings.update(data)
             if any(key.startswith("chat_") for key in data):

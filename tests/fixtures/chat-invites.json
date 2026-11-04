@@ -1,0 +1,32 @@
+[
+  {
+    "url": "http://192.168.1.20:8786",
+    "key": "0123456789abcdef",
+    "code": "LFCHAT1.eyJ2IjoxLCJ1cmwiOiJodHRwOi8vMTkyLjE2OC4xLjIwOjg3ODYiLCJrZXkiOiIwMTIzNDU2Nzg5YWJjZGVmIn0"
+  },
+  {
+    "url": "http://10.8.0.2:8786",
+    "key": "friend_key-123",
+    "code": "LFCHAT1.eyJ2IjoxLCJ1cmwiOiJodHRwOi8vMTAuOC4wLjI6ODc4NiIsImtleSI6ImZyaWVuZF9rZXktMTIzIn0"
+  },
+  {
+    "url": "https://chat.example.com",
+    "key": "secret-https",
+    "code": "LFCHAT1.eyJ2IjoxLCJ1cmwiOiJodHRwczovL2NoYXQuZXhhbXBsZS5jb20iLCJrZXkiOiJzZWNyZXQtaHR0cHMifQ"
+  },
+  {
+    "url": "http://[2001:db8::1]:8786",
+    "key": "ipv6-secret",
+    "code": "LFCHAT1.eyJ2IjoxLCJ1cmwiOiJodHRwOi8vWzIwMDE6ZGI4OjoxXTo4Nzg2Iiwia2V5IjoiaXB2Ni1zZWNyZXQifQ"
+  },
+  {
+    "url": "http://localhost",
+    "key": " key with spaces ",
+    "code": "LFCHAT1.eyJ2IjoxLCJ1cmwiOiJodHRwOi8vbG9jYWxob3N0Iiwia2V5IjoiIGtleSB3aXRoIHNwYWNlcyAifQ"
+  },
+  {
+    "url": "https://[::1]",
+    "key": "default-https-key",
+    "code": "LFCHAT1.eyJ2IjoxLCJ1cmwiOiJodHRwczovL1s6OjFdIiwia2V5IjoiZGVmYXVsdC1odHRwcy1rZXkifQ"
+  }
+]

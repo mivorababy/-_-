@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from chat_service import ChatService, validate_server_url
+from chat_service import ChatService, decode_invite, encode_invite, validate_server_url
 from chat_server import clean_attachment
 
 
@@ -33,6 +33,10 @@ class ChatIntegrationTests(unittest.TestCase):
         return payload["token"]
 
     def test_two_clients_messages_attachments_and_nonce(self):
+        # The same single code used by Windows and Android supplies the peer config.
+        invite = decode_invite(encode_invite(f"http://127.0.0.1:{self.port}", self.config["chat_token"]))
+        self.peer.configure({"chat_enabled": True, "chat_host_enabled": False,
+                             "chat_server_url": invite["server_url"], "chat_token": invite["access_code"]})
         alice = self.session(self.host, "Alice", "alice-client-0123456789")
         bob = self.session(self.peer, "Боб", "bob-client-0123456789")
         message = {"room": "general", "text": "Послушай!", "kind": "track",

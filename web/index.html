@@ -141,7 +141,8 @@ body.pulse-on .row.active,body.pulse-on .row.layer-on{box-shadow:0 0 calc(10px +
 .compact .thumb{width:calc(26px * var(--track-scale));height:calc(26px * var(--track-scale))}
 .thumb{width:38px;height:38px;border-radius:calc(var(--r) / 2.4);flex:none;overflow:hidden;display:grid;place-items:center;color:rgba(255,255,255,.85);background:linear-gradient(135deg,hsl(var(--h,230) 55% 48%),hsl(calc(var(--h,230) + 40) 55% 32%))}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
-.thumb img.youtube-art{transform:scale(1.34)}
+.thumb img.youtube-art,.home-track-art img.youtube-art,.home-playlist-art img.youtube-art,.playlist-art img.youtube-art,.download-art img.youtube-art{transform:scale(var(--art-crop-scale,1.34))}
+.download-art{display:block;width:54px;height:54px;overflow:hidden;border-radius:8px}
 body.clip-active .panel{backdrop-filter:none;-webkit-backdrop-filter:none}
 body.clip-active #bgImg{visibility:hidden}
 .thumb .icon{width:55%;height:55%}
@@ -803,7 +804,7 @@ body.mono-theme #bgDim{background:rgba(0,0,0,.42)}body.mono-theme #bgImg{filter:
     <div class="note" id="trackEditorName">Выбери локальный трек.</div>
     <div class="field"><div class="lab">Начало фрагмента <span id="trimStartLabel" class="muted">0:00</span></div><div class="ctl"><input type="range" id="trimStart" min="0" max="100" step="0.1" value="0"></div></div>
     <div class="field"><div class="lab">Конец фрагмента <span id="trimEndLabel" class="muted">0:00</span></div><div class="ctl"><input type="range" id="trimEnd" min="0" max="100" step="0.1" value="100"></div></div>
-    <div class="note">Обрезанный фрагмент сохранится отдельным MP3 в папке music/Edited. Если у исходника есть обложка, она будет перенесена в новый файл. Исходный файл останется без изменений. В списке Edited кнопка ⇄ позволяет скопировать или переместить фрагмент в локальный плейлист либо заменить им другой трек.</div>
+    <div class="note">Обрезанный фрагмент сохранится отдельным MP3 в папке music/Edited. Если у исходника есть обложка, она будет перенесена в новый файл. Исходный файл останется без изменений. В списке Edited кнопка ⇄ позволяет скопировать или переместить фрагмент в локальный плейлист либо заменить исходный трек: плеер найдёт его автоматически по источнику или названию и автору.</div>
     <div class="ctl" style="justify-content:flex-start;gap:8px;margin-top:12px"><button class="btn" id="trimPreview">Прослушать фрагмент</button><button class="btn" id="trimPreviewStop">Остановить</button></div>
     <div class="trim-preview-progress"><span id="trimPreviewCurrent">0:00</span><input type="range" id="trimPreviewSeek" min="0" max="100" step="0.1" value="0" aria-label="Перемотка предпрослушивания"><span id="trimPreviewDuration">0:00</span></div>
     <div class="ctl" style="justify-content:flex-end;gap:8px;margin-top:16px"><button class="btn" id="trackEditorCancel">Отмена</button><button class="btn primary" id="trackEditorSave">Сохранить фрагмент</button></div>
@@ -958,6 +959,12 @@ function toast(message) {
 }
 
 const CHANGE_LOG_ENTRIES = [
+  {version:"1.32", date:"2026-11-03", items:[
+    "Чат добавляется одним кодом приглашения: адрес и ключ подставляются автоматически. Код совместим с Android.",
+    "Для треков с обложкой, Topic и Official Audio больше не ищется отдельный клип; используется только исходное видео.",
+    "В Discord строка исполнителя больше не дублирует YouTube Music. Онлайн-обложки обрезаются до квадрата в плеере и статусе.",
+    "При замене обрезанного трека исходный определяется автоматически по источнику, названию и исполнителю без повторного выбора."
+  ]},
   {version:"1.31", date:"2026-11-03", items:[
     "В радио добавлен фильтр инструменталов, караоке и минусовок.",
     "Крестик убирает трек из списка; корзина удаляет локальный аудиофайл после подтверждения. Скрытые треки можно вернуть в настройках.",
@@ -1867,9 +1874,12 @@ function thumbHtml(track) {
 }
 document.addEventListener("load",event=>{
   const image=event.target;
-  if(image.tagName!=="IMG"||!image.closest(".thumb"))return;
+  if(image.tagName!=="IMG"||!image.closest(".thumb,.home-track-art,.home-playlist-art,.playlist-art,.download-art"))return;
   const ratio=image.naturalWidth/Math.max(1,image.naturalHeight);
-  image.classList.toggle("youtube-art",/^https:\/\/(?:i|img)\.ytimg\.com\/vi\//i.test(image.currentSrc||image.src)&&ratio>1.3&&ratio<1.4);
+  const letterboxed=/^https:\/\/(?:[a-z0-9-]+\.)?ytimg\.com\/vi(?:_webp)?\//i.test(image.currentSrc||image.src)&&ratio>1.3&&ratio<1.4;
+  image.classList.toggle("youtube-art",letterboxed);
+  if(letterboxed)image.style.setProperty("--art-crop-scale",String(16/9/ratio+.002));
+  else image.style.removeProperty("--art-crop-scale");
 },true);
 const PLAYLIST_ORDER_KEY = "lastfrequency.playlistOrder.v1";
 const LEGACY_PLAYLIST_ORDER_KEY = "soundlarp.playlistOrder.v1";
@@ -4145,16 +4155,9 @@ async function distributeEditedTrack(trackId) {
   if(!playlists.length)return toast("Сначала добавь локальный плейлист с файлами на компьютере.");
   const targetPlaylistKey=await cutePrompt({title:"Куда поместить трек?",subtitle:"Выбери локальный плейлист с файлами на компьютере.",options:playlists.map(playlist=>({value:playlist.key,label:playlist.name})),confirmText:"Дальше"});
   if(!targetPlaylistKey)return;
-  const mode=await cutePrompt({title:"Как разместить трек?",subtitle:"При замене оригинальный файл останется в Edited как резервная копия.",options:[{value:"copy",label:"Скопировать в плейлист, оставить в Edited"},{value:"move",label:"Переместить в плейлист"},{value:"replace",label:"Заменить трек в плейлисте…"}],confirmText:"Продолжить"});
+  const mode=await cutePrompt({title:"Как разместить трек?",subtitle:"При замене плеер сам найдёт исходный трек по источнику или названию и автору. Оригинальный файл останется в Edited как резервная копия.",options:[{value:"copy",label:"Скопировать в плейлист, оставить в Edited"},{value:"move",label:"Переместить в плейлист"},{value:"replace",label:"Заменить исходный трек в плейлисте"}],confirmText:"Продолжить"});
   if(!mode)return;
-  let replaceTrackId="";
-  if(mode==="replace") {
-    const targets=S.tracks.filter(item=>item.pl===targetPlaylistKey&&!item.remote);
-    if(!targets.length)return toast("В выбранном плейлисте нет локальных треков для замены.");
-    replaceTrackId=await cutePrompt({title:"Какой трек заменить?",subtitle:"Старый файл будет сохранён в Edited.",options:targets.map(item=>({value:item.id,label:[item.title,item.artist].filter(Boolean).join(" — ")||item.id})),confirmText:"Заменить трек"});
-    if(!replaceTrackId)return;
-  }
-  const result=await api("/api/track/distribute","POST",{track_id:trackId,target_playlist_key:targetPlaylistKey,mode,replace_track_id:replaceTrackId});
+  const result=await api("/api/track/distribute","POST",{track_id:trackId,target_playlist_key:targetPlaylistKey,mode});
   if(result.action==="replace")toast(`Трек заменён в «${result.playlist}». Оригинал сохранён в Edited.`);
   else if(result.action==="copy")toast(`Копия добавлена в «${result.playlist}».`);
   else toast(`Трек перемещён в «${result.playlist}».`);
@@ -4656,7 +4659,7 @@ async function enableDownloaderForImmediateDownload() {
 }
 async function startMp3Download(url,isPlaylist=false,provider="",playlistTitle="",askDestination=true,includeClip=false) { let playlist="Загрузки",destination_path=$("#downloadPath").value.trim()||S.settings.download_path||"",destination_playlist_key="";if(!isPlaylist&&askDestination){const destination=await chooseDownloadPlaylist();if(destination===null)return;if(destination==="__choose_folder__"){const choice=await api("/api/browse","POST",{initial:destination_path||""});if(!choice.path)return;destination_path=choice.path;}else if(destination.startsWith("playlist:")){destination_playlist_key=destination.slice("playlist:".length);destination_path="";}}await enableDownloaderForImmediateDownload();const job=await api("/api/download/start","POST",{url,playlist,is_playlist:isPlaylist,destination_path,destination_playlist_key,provider,playlist_title:playlistTitle,include_clip:!!includeClip});downloadJobs.set(job.id,job);renderDownloadJob(job);scheduleDownloadPoll(); }
 
-function showRemoteResults(items, isPlaylist=false) { const box=$("#downloadResults"); if(!items||!items.length){box.innerHTML='<div class="note">Ничего не найдено.</div>';return;} box.innerHTML=items.map((item,index)=>{const buttons=!isPlaylist?(S.activeClipsEnabled?`<div class="download-result-actions"><button class="btn small primary" data-download-item="${index}" data-include-clip="1" title="Скачать трек и докачать клип">Скачать+</button><button class="btn small" data-download-item="${index}" title="Скачать только трек">Скачать-</button></div>`:`<button class="btn small primary" data-download-item="${index}" title="Скачать трек">Скачать</button>`):`<button class="btn small primary" data-download-item="${index}">MP3</button>`;const hint=!isPlaylist&&S.activeClipsEnabled?'<div class="download-result-hint">Скачать+ — докачать клип · Скачать- — только трек</div>':'';return `<div class="download-result-wrap"><div class="download-result"><img src="${safeDownloadText(item.thumbnail)}" alt=""><div class="meta"><div class="title">${safeDownloadText(item.title)}</div><div class="sub">${safeDownloadText(item.artist)}${item.duration?' · '+fmtTime(item.duration):''}</div></div>${buttons}</div>${hint}</div>`;}).join(""); box._items=items; box._isPlaylist=isPlaylist; }
+function showRemoteResults(items, isPlaylist=false) { const box=$("#downloadResults"); if(!items||!items.length){box.innerHTML='<div class="note">Ничего не найдено.</div>';return;} box.innerHTML=items.map((item,index)=>{const buttons=!isPlaylist?(S.activeClipsEnabled?`<div class="download-result-actions"><button class="btn small primary" data-download-item="${index}" data-include-clip="1" title="Скачать трек и докачать клип">Скачать+</button><button class="btn small" data-download-item="${index}" title="Скачать только трек">Скачать-</button></div>`:`<button class="btn small primary" data-download-item="${index}" title="Скачать трек">Скачать</button>`):`<button class="btn small primary" data-download-item="${index}">MP3</button>`;const hint=!isPlaylist&&S.activeClipsEnabled?'<div class="download-result-hint">Скачать+ — докачать клип · Скачать- — только трек</div>':'';return `<div class="download-result-wrap"><div class="download-result"><span class="download-art"><img src="${safeDownloadText(item.thumbnail)}" alt=""></span><div class="meta"><div class="title">${safeDownloadText(item.title)}</div><div class="sub">${safeDownloadText(item.artist)}${item.duration?' · '+fmtTime(item.duration):''}</div></div>${buttons}</div>${hint}</div>`;}).join(""); box._items=items; box._isPlaylist=isPlaylist; }
 async function runDownloadSearch(provider) { const query=$("[data-download-query=\""+provider+"\"]").value.trim(); if(!query)return toast("Введи название трека."); const box=$("#downloadResults"); box.innerHTML='<div class="note">Ищу…</div>'; try{ const data=await api("/api/download/search","POST",{provider,query}); showRemoteResults(data.results); }catch(e){box.innerHTML='<div class="note">'+safeDownloadText(e.message)+'</div>';}}
 function bindSettings() {
   $("#restoreHiddenTracks").onclick=()=>restoreHiddenTracks().catch(error=>toast(error.message||"Не удалось вернуть скрытые треки."));
